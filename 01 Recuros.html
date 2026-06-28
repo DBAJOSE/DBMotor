@@ -4,18 +4,18 @@
     <meta charset="UTF-8">
     <title>SQL Server Internals Simulator - AsistenteDBA</title>
     <style>
-        :root { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --accent: #0078d4; --danger: #cf6679; --success: #03dac6; --warn: #bb86fc; }
-        body { font-family: 'Segoe UI', Consolas, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: stretch; height: 100vh; box-sizing: border-box; overflow: hidden; }
+        :root { --bg: #121212; --card: #1e1e1e; --panel: #24242c; --text: #e0e0e0; --accent: #0078d4; --danger: #cf6679; --success: #03dac6; --warn: #bb86fc; }
+        body { font-family: 'Segoe UI', Consolas, sans-serif; background: var(--bg); color: var(--text); margin: 0; height: 100vh; display: flex; overflow: hidden; }
         
         /* Dashboard Layout */
-        .dashboard { display: grid; grid-template-columns: 250px 1fr; gap: 20px; width: 100%; flex: 1; min-height: 0; }
+        .dashboard { display: flex; width: 100%; height: 100vh; min-width: 0; min-height: 0; }
         
         /* Controls Panel */
-        .controls { background: var(--card); padding: 20px; border-radius: 8px; border-left: 4px solid var(--accent); display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
+        .controls { width: 280px; flex: 0 0 280px; background: var(--panel); padding: 20px; border-right: 1px solid #444; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; box-sizing: border-box; }
         h2 { margin-top: 0; font-size: 1.2rem; color: var(--accent); }
         label { font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; }
         input[type="range"] { width: 100%; margin-top: 5px; }
-        button { background: var(--accent); color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button { background: var(--accent); color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; width: 100%; }
         button:hover { filter: brightness(1.2); }
         button.stop { background: var(--danger); }
         
@@ -24,8 +24,8 @@
         .metric-lbl { font-size: 0.8rem; color: #888; }
 
         /* Simulation Area */
-        .simulation-area { background: var(--card); border-radius: 8px; position: relative; overflow: hidden; display: flex; flex-direction: column; flex: 1; min-height: 0; }
-        .pipeline { flex: 1; display: flex; align-items: center; justify-content: space-around; padding: 20px; position: relative; }
+        .simulation-area { background: var(--card); position: relative; overflow: hidden; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+        .pipeline { flex: 1; display: flex; align-items: center; justify-content: space-around; gap: 20px; padding: 32px; position: relative; min-height: 0; }
         
         /* Components */
         .component { 
@@ -52,13 +52,20 @@
         }
         
         /* Log Console */
-        .console { height: 150px; background: #111; padding: 10px; overflow-y: auto; font-family: Consolas, monospace; font-size: 0.85rem; border-top: 1px solid #444; }
+        .console { flex: 0 0 160px; background: #111; padding: 14px; overflow-y: auto; font-family: Consolas, monospace; font-size: 0.85rem; border-top: 1px solid #444; box-sizing: border-box; }
         .log-entry { margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 2px; }
         .err { color: var(--danger); } .warn { color: var(--warn); } .info { color: #888; } .succ { color: var(--success); }
 
         /* States */
         .component.stressed { border-color: var(--danger); box-shadow: 0 0 15px rgba(207, 102, 121, 0.3); animation: shake 0.5s infinite; }
         .component.writing { border-color: var(--success); }
+
+        @media (max-width: 900px) {
+            .dashboard { flex-direction: column; }
+            .controls { width: 100%; flex: 0 0 auto; max-height: 260px; border-right: none; border-bottom: 1px solid #444; }
+            .pipeline { padding: 20px; overflow-x: auto; justify-content: flex-start; }
+            .component { flex: 0 0 140px; }
+        }
 
         @keyframes shake { 0% { transform: translate(1px, 1px); } 50% { transform: translate(-1px, -1px); } 100% { transform: translate(1px, 1px); } }
     </style>
