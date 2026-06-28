@@ -48,6 +48,14 @@
         /* ESTADOS DE LOS NODOS */
         .node.active-cpu { border-color: var(--cpu); box-shadow: 0 0 20px var(--cpu); }
         .node.active-ram { border-color: var(--ram); box-shadow: 0 0 20px var(--ram); }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; height: auto; overflow-y: auto; }
+            .sidebar { width: 100%; flex: none; border-right: none; border-bottom: 1px solid #333; height: 350px; }
+            .stage { padding: 10px; }
+            .architecture { flex-direction: column; gap: 40px; min-height: 600px; max-height: none; padding: 20px; }
+            .node { transform: scale(0.9); }
+        }
         .node.active-disk { border-color: var(--disk); box-shadow: 0 0 20px var(--disk); }
         .node.active-net { border-color: var(--net); box-shadow: 0 0 20px var(--net); }
         
