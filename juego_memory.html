@@ -98,6 +98,14 @@
         .card-front i { font-size: 2rem; margin-bottom: 10px; color: var(--accent); }
         .card.matched .card-front i { color: var(--success); }
         .card-front span { font-size: 0.8rem; font-weight: 800; text-align: center; }
+        .card-front small { 
+            font-size: 0.6rem; 
+            color: rgba(248, 250, 252, 0.5); 
+            margin-top: 5px; 
+            text-align: center; 
+            line-height: 1.2;
+            padding: 0 8px;
+        }
 
         .controls { margin-top: 30px; }
         .btn-restart {
@@ -116,6 +124,7 @@
             .game-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; }
             .card-front i { font-size: 1.2rem; }
             .card-front span { font-size: 0.6rem; }
+            .card-front small { font-size: 0.5rem; padding: 0 4px; }
         }
 
         /* Modal Victoria */
@@ -160,14 +169,14 @@
 
     <script>
         const cardsData = [
-            { icon: 'fa-database', name: 'ACID' },
-            { icon: 'fa-bolt', name: 'INDEX' },
-            { icon: 'fa-link-slash', name: 'DEADLOCK' },
-            { icon: 'fa-layer-group', name: 'SHARDING' },
-            { icon: 'fa-clone', name: 'REPLICA' },
-            { icon: 'fa-floppy-disk', name: 'BACKUP' },
-            { icon: 'fa-magnifying-glass', name: 'QUERY' },
-            { icon: 'fa-arrow-right-arrow-left', name: 'TRAN' }
+            { icon: 'fa-database', name: 'ACID', desc: 'Atomicidad, Consistencia, Aislamiento, Durabilidad' },
+            { icon: 'fa-bolt', name: 'INDEX', desc: 'Estructura que acelera búsquedas' },
+            { icon: 'fa-link-slash', name: 'DEADLOCK', desc: 'Bloqueo mutuo entre transacciones' },
+            { icon: 'fa-layer-group', name: 'SHARDING', desc: 'Particionamiento horizontal de datos' },
+            { icon: 'fa-clone', name: 'REPLICA', desc: 'Copia sincronizada de la base de datos' },
+            { icon: 'fa-floppy-disk', name: 'BACKUP', desc: 'Respaldo para recuperación ante desastres' },
+            { icon: 'fa-magnifying-glass', name: 'QUERY', desc: 'Consulta para extraer información' },
+            { icon: 'fa-arrow-right-arrow-left', name: 'TRAN', desc: 'Unidad de trabajo con garantías ACID' }
         ];
 
         let cards = [];
@@ -204,6 +213,7 @@
                     <div class="card-face card-front">
                         <i class="fas ${data.icon}"></i>
                         <span>${data.name}</span>
+                        <small>${data.desc}</small>
                     </div>
                 `;
                 card.onclick = () => flipCard(card);
