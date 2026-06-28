@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SQL Enterprise Simulator: Concurrency & Internals</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -10,10 +11,11 @@
             --cpu: #ff9f43; --ram: #54a0ff; --disk: #ff6b6b; --tempdb: #feca57; --lock: #ff9ff3;
             --session-a: #00d2d3; --session-b: #ff6b6b;
         }
+        *, *::before, *::after { box-sizing: border-box; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; height: 100vh; display: flex; overflow: hidden; }
 
         /* CONTROL PANEL */
-        .sidebar { width: 320px; background: var(--panel); padding: 20px; display: flex; flex-direction: column; border-right: 1px solid #333; overflow-y: auto; }
+        .sidebar { width: 320px; flex: 0 0 320px; background: var(--panel); padding: 20px; display: flex; flex-direction: column; border-right: 1px solid #333; overflow-y: auto; }
         .sidebar h2 { color: var(--session-a); font-size: 1.2rem; border-bottom: 1px solid #444; padding-bottom: 10px; }
         .scenario-group { margin-bottom: 20px; }
         .scenario-group h4 { color: #888; text-transform: uppercase; font-size: 0.8rem; margin-bottom: 10px; }
@@ -24,16 +26,17 @@
         }
         button:hover { background: #3d3d4a; border-color: var(--session-a); }
         button.active { background: #2d3436; border-left: 4px solid var(--session-a); }
+        .scenario-btn.active { box-shadow: 0 0 0 1px rgba(0, 210, 211, 0.35); }
         button i { font-size: 1.2rem; }
 
         /* STAGE */
-        .stage { flex: 1; padding: 20px; position: relative; display: flex; flex-direction: column; }
+        .stage { flex: 1; padding: 20px; position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
         
         /* ARCHITECTURE DIAGRAM */
         .grid-system {
             display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; 
             background: #15151a; padding: 40px; border-radius: 15px; margin-bottom: 20px;
-            position: relative; height: 500px; align-content: center;
+            position: relative; flex: 1 1 auto; min-height: 360px; align-content: center; overflow: hidden;
         }
 
         .node {
@@ -66,8 +69,9 @@
         }
 
         /* LIVE MONITOR */
-        .monitor { background: #000; padding: 15px; border-radius: 8px; font-family: 'Consolas', monospace; color: #0f0; height: 150px; overflow-y: auto; font-size: 0.85rem; border: 1px solid #333; }
-        .mon-row { display: flex; justify-content: space-between; border-bottom: 1px solid #222; padding: 2px 0; }
+        .monitor { background: #000; padding: 15px; border-radius: 8px; font-family: 'Consolas', monospace; color: #0f0; flex: 0 0 155px; overflow-y: auto; font-size: 0.85rem; border: 1px solid #333; }
+        .mon-row { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid #222; padding: 2px 0; }
+        .mon-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .mon-head { color: #fff; font-weight: bold; border-bottom: 1px solid #555; }
 
         /* STYLES FOR SPECIFIC STATES */
@@ -76,6 +80,14 @@
         .node.cpu-burn { border-color: var(--cpu); animation: pulse 0.5s infinite; }
 
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+
+        @media (max-width: 900px) {
+            body { flex-direction: column; overflow-y: auto; }
+            .sidebar { width: 100%; flex: 0 0 auto; max-height: 300px; border-right: none; border-bottom: 1px solid #333; }
+            .stage { min-height: 700px; overflow: visible; }
+            .grid-system { min-width: 760px; overflow: visible; }
+            .monitor { flex-basis: 170px; overflow-x: auto; }
+        }
     </style>
 </head>
 <body>
@@ -85,20 +97,20 @@
     
     <div class="scenario-group">
         <h4>Concurrencia (Blocking)</h4>
-        <button onclick="runScenario('blocking')">
+        <button class="scenario-btn" onclick="runScenario('blocking', this)">
             <span>🔒 Bloqueo (Blocking)</span> <i class="fas fa-key" style="color: var(--lock)"></i>
         </button>
-        <button onclick="runScenario('deadlock')">
+        <button class="scenario-btn" onclick="runScenario('deadlock', this)">
             <span>💀 Deadlock (Victim)</span> <i class="fas fa-skull-crossbones" style="color: #e74c3c"></i>
         </button>
     </div>
 
     <div class="scenario-group">
         <h4>Recursos & TempDB</h4>
-        <button onclick="runScenario('spill')">
+        <button class="scenario-btn" onclick="runScenario('spill', this)">
             <span>⚠️ TempDB Spill (Sort)</span> <i class="fas fa-trash-alt" style="color: var(--tempdb)"></i>
         </button>
-        <button onclick="runScenario('parameter_sniffing')">
+        <button class="scenario-btn" onclick="runScenario('parameter_sniffing', this)">
             <span>🐘 Parameter Sniffing</span> <i class="fas fa-weight-hanging" style="color: var(--cpu)"></i>
         </button>
     </div>
@@ -180,21 +192,63 @@
 
     let activePackets = [];
     let scenarioState = null;
+    let deadlockTimer = null;
+    let scenarioTimers = [];
+
+    function setScenarioTimer(callback, delay) {
+        const timer = setTimeout(callback, delay);
+        scenarioTimers.push(timer);
+        return timer;
+    }
 
     // --- ESCENARIOS ---
-    function runScenario(type) {
+    function runScenario(type, trigger) {
         resetSim();
         scenarioState = type;
+        document.querySelectorAll('.scenario-btn').forEach(btn => btn.classList.remove('active'));
+        if (trigger) trigger.classList.add('active');
 
         if (type === 'blocking') {
             logMonitor("INFO", "Iniciando escenario de Bloqueo...");
             // SPID 51 (El bloqueador) - UPDATE
             spawnPacket('51', 'update', ['client', 'cpu', 'lock', 'ram', 'data', 'lock']); // Se queda en lock
             
-            setTimeout(() => {
+            setScenarioTimer(() => {
                 // SPID 52 (La víctima) - SELECT
+                if (scenarioState !== 'blocking') return;
                 spawnPacket('52', 'select', ['client', 'cpu', 'lock']); // Se detiene en lock
             }, 2000);
+        }
+
+        if (type === 'deadlock') {
+            logMonitor("INFO", "Iniciando escenario de Deadlock...");
+            spawnPacket('51', 'update_a', ['client', 'cpu', 'lock']);
+            setScenarioTimer(() => {
+                if (scenarioState !== 'deadlock') return;
+                spawnPacket('52', 'update_b', ['client', 'cpu', 'lock']);
+            }, 900);
+
+            deadlockTimer = setScenarioTimer(() => {
+                if (scenarioState !== 'deadlock') return;
+                logMonitor("ERROR", "Deadlock detectado. SPID 52 elegido como víctima.");
+                const victim = activePackets.find(p => p.dataset.spid === '52');
+                if (victim) {
+                    victim.dataset.status = 'KILLED';
+                    victim.style.background = '#000';
+                    updateMonitor('52', 'KILLED/ROLLBACK', '1205', 'DEADLOCK VICTIM');
+                    setTimeout(() => victim.remove(), 500);
+                }
+
+                const survivor = activePackets.find(p => p.dataset.spid === '51');
+                if (survivor) {
+                    survivor.dataset.status = 'COMPLETED';
+                    updateMonitor('51', 'COMPLETED', '', 'COMMIT');
+                    setTimeout(() => survivor.remove(), 900);
+                }
+
+                nodes.lock.classList.remove('locked');
+                hideBadges();
+            }, 5200);
         }
 
         if (type === 'spill') {
@@ -240,7 +294,6 @@
         }
 
         const currentNodeId = path[stepIndex];
-        const nextNodeId = path[stepIndex]; // Nos movemos al target
         const nodeEl = nodes[currentNodeId];
 
         // Lógica de "Eventos en Nodos"
@@ -261,6 +314,16 @@
                 pkt.style.animation = "pulse 0.5s infinite";
                 delay = 999999; 
             }
+        }
+
+        // --- LÓGICA DE DEADLOCK ---
+        if (scenarioState === 'deadlock' && currentNodeId === 'lock') {
+            nodeEl.classList.add('locked');
+            showBadge('w-lock', 'DEADLOCK');
+            const command = pkt.dataset.spid === '51' ? 'UPDATE TablaA -> TablaB' : 'UPDATE TablaB -> TablaA';
+            updateMonitor(pkt.dataset.spid, 'SUSPENDED', 'LCK_M_X', command);
+            pkt.style.animation = "pulse 0.5s infinite";
+            delay = 999999;
         }
 
         // --- LÓGICA DE TEMPDB SPILL ---
@@ -319,9 +382,19 @@
     }
 
     function resetSim() {
-        activePackets.forEach(p => p.remove());
+        scenarioTimers.forEach(timer => clearTimeout(timer));
+        scenarioTimers = [];
+        if (deadlockTimer) {
+            clearTimeout(deadlockTimer);
+            deadlockTimer = null;
+        }
+        activePackets.forEach(p => {
+            p.dataset.status = 'KILLED';
+            p.remove();
+        });
         activePackets = [];
         scenarioState = null;
+        document.querySelectorAll('.scenario-btn').forEach(btn => btn.classList.remove('active'));
         document.querySelectorAll('.node').forEach(n => n.classList.remove('locked', 'spill', 'cpu-burn'));
         hideBadges();
         document.getElementById('monitor').innerHTML = `

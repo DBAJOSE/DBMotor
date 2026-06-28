@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simulador Avanzado SQL: Hardware vs Lógica - AsistenteDBA</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -10,29 +11,30 @@
             --cpu: #ff9f43; --ram: #54a0ff; --disk: #ff6b6b; --net: #1dd1a1; --logic: #a55eea;
             --scan: #eb3b5a; --seek: #20bf6b;
         }
+        *, *::before, *::after { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); margin: 0; height: 100vh; display: flex; overflow: hidden; }
 
         /* SIDEBAR */
-        .sidebar { width: 300px; background: var(--panel); padding: 20px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #444; overflow-y: auto; }
+        .sidebar { width: 300px; flex: 0 0 300px; background: var(--panel); padding: 20px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #444; overflow-y: auto; }
         h2 { color: var(--logic); font-size: 1.1rem; border-bottom: 2px solid var(--logic); padding-bottom: 10px; margin-bottom: 5px; }
         .category-title { font-size: 0.85rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-top: 15px; }
         
         button {
-            padding: 12px; border: none; background: #3a3a45; color: white; text-align: left; cursor: pointer; border-radius: 6px; transition: 0.2s; display: flex; justify-content: space-between; align-items: center;
+            padding: 12px; border: none; background: #3a3a45; color: white; text-align: left; cursor: pointer; border-radius: 6px; transition: 0.2s; display: flex; justify-content: space-between; align-items: center; gap: 12px;
         }
         button:hover { background: #4a4a58; }
         button.active { background: var(--logic); font-weight: bold; box-shadow: 0 4px 12px rgba(165, 94, 234, 0.4); }
         button small { font-size: 0.75em; opacity: 0.7; }
 
         /* MAIN STAGE */
-        .stage { flex: 1; padding: 40px; display: flex; flex-direction: column; position: relative; }
+        .stage { flex: 1; padding: 32px; display: flex; flex-direction: column; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
         
         /* DIAGRAMA FLOTANTE */
         .architecture { 
             display: flex; justify-content: space-between; align-items: center; 
             background: #15151a; border-radius: 15px; padding: 40px; 
             position: relative; box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
-            height: 300px;
+            flex: 1 1 auto; min-height: 300px; max-height: 440px;
         }
 
         .node {
@@ -64,7 +66,7 @@
         .packet {
             position: absolute; width: 15px; height: 15px; border-radius: 50%;
             background: white; top: 50%; margin-top: -7.5px; z-index: 5;
-            box-shadow: 0 0 10px white;
+            box-shadow: 0 0 10px white; pointer-events: none;
         }
         /* Tipos de paquetes */
         .pkt-seek { background: var(--seek); width: 10px; height: 10px; } /* Rápido */
@@ -74,7 +76,7 @@
         /* INFO PANEL */
         .info-panel {
             margin-top: 20px; background: #2b2b36; padding: 20px; border-radius: 10px; border-left: 5px solid var(--logic);
-            animation: slideIn 0.5s;
+            animation: slideIn 0.5s; overflow-y: auto; max-height: 240px;
         }
         .info-title { font-size: 1.2rem; color: var(--logic); margin-bottom: 10px; font-weight: bold; }
         .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
@@ -83,6 +85,15 @@
 
         @keyframes shake { 0% { transform: rotate(0deg); } 25% { transform: rotate(5deg); } 75% { transform: rotate(-5deg); } 100% { transform: rotate(0deg); } }
         @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        @media (max-width: 900px) {
+            body { flex-direction: column; overflow-y: auto; }
+            .sidebar { width: 100%; flex: 0 0 auto; max-height: 300px; border-right: none; border-bottom: 1px solid #444; }
+            .stage { min-height: 600px; padding: 20px; overflow: visible; }
+            .architecture { overflow-x: auto; justify-content: flex-start; gap: 42px; }
+            .node { flex: 0 0 120px; }
+            .path { left: 40px; right: 40px; }
+        }
 
     </style>
 </head>
@@ -216,6 +227,7 @@
         // Reset UI
         document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        document.querySelectorAll('.architecture .packet').forEach(p => p.remove());
         document.querySelectorAll('.node').forEach(n => {
             n.className = 'node'; // Remove stress classes
             n.querySelector('.alert-bubble').style.opacity = 0;

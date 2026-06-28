@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simulador de Cuellos de Botella SQL Server - AsistenteDBA</title>
     <style>
         :root {
@@ -9,16 +10,17 @@
             --accent: #00d4ff; --cpu: #ff9f43; --ram: #54a0ff; --disk: #ff6b6b; --network: #1dd1a1;
             --danger: #e74c3c; --warning: #f1c40f;
         }
+        *, *::before, *::after { box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Consolas, Tahoma, sans-serif;
             background-color: var(--bg-main); color: var(--text-primary);
-            margin: 0; padding: 20px; display: flex; gap: 20px; height: 100vh; box-sizing: border-box;
+            margin: 0; display: flex; height: 100vh; overflow: hidden;
         }
 
         /* CONTROLES LATERALES */
         .sidebar {
-            flex: 0 0 280px; background: var(--bg-panel); padding: 20px; border-radius: 12px;
-            display: flex; flex-direction: column; gap: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            flex: 0 0 300px; background: var(--bg-panel); padding: 20px;
+            display: flex; flex-direction: column; gap: 15px; border-right: 1px solid #333; overflow-y: auto;
         }
         h2 { margin-top: 0; color: var(--accent); font-size: 1.3rem; }
         h3 { font-size: 1rem; margin-bottom: 5px; color: #888; }
@@ -26,27 +28,28 @@
             padding: 12px; border: none; border-radius: 6px;
             background: #333; color: var(--text-primary); cursor: pointer;
             text-align: left; font-weight: bold; transition: all 0.2s;
-            display: flex; align-items: center; justify-content: space-between;
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
         }
+        .btn-scenario > span { font-size: 0.75rem; text-align: right; white-space: nowrap; }
         .btn-scenario:hover { filter: brightness(1.2); }
         .btn-scenario.active { border-left: 4px solid var(--accent); background: #2a2a2a; }
         .accent-cpu { color: var(--cpu); } .accent-ram { color: var(--ram); } .accent-disk { color: var(--disk); }
 
         /* ÁREA PRINCIPAL DE SIMULACIÓN */
         .main-area {
-            flex: 1; display: flex; flex-direction: column; gap: 20px;
+            flex: 1; display: flex; flex-direction: column; gap: 20px; padding: 20px; min-width: 0; min-height: 0;
         }
         .diagram-container {
             flex: 2; background: var(--bg-panel); border-radius: 12px; padding: 30px;
             position: relative; display: flex; align-items: center; justify-content: space-between;
-            overflow: hidden;
+            overflow: hidden; min-height: 260px;
         }
 
         /* NODOS DEL FLUJO */
         .node {
             width: 120px; height: 100px; background: #2d2d3a; border: 3px solid #444;
             border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-            text-align: center; position: relative; z-index: 2; transition: all 0.3s;
+            text-align: center; position: relative; z-index: 2; transition: all 0.3s; flex: 0 0 120px;
         }
         .node small { display: block; font-size: 0.7rem; color: #aaa; margin-top: 5px; }
         .node i { font-size: 1.5rem; margin-bottom: 5px; }
@@ -56,7 +59,7 @@
         }
 
         /* CONECTORES Y FLUJO */
-        .connector { flex: 1; height: 4px; background: #444; position: relative; margin: 0 10px; }
+        .connector { flex: 1; min-width: 70px; height: 4px; background: #444; position: relative; margin: 0 10px; }
         .packet {
             position: absolute; width: 14px; height: 14px; background: var(--accent);
             border-radius: 50%; top: 50%; margin-top: -7px; z-index: 5;
@@ -74,12 +77,19 @@
 
         /* PANEL DE EXPLICACIÓN */
         .explanation-panel {
-            flex: 1; background: #2a2a35; border-radius: 12px; padding: 20px; border-left: 5px solid #444;
+            flex: 1; background: #2a2a35; border-radius: 12px; padding: 20px; border-left: 5px solid #444; overflow-y: auto; min-height: 0;
         }
         #explanation-title { margin-top: 0; color: var(--accent); }
         #explanation-text { line-height: 1.5; }
 
         @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.03); } }
+
+        @media (max-width: 900px) {
+            body { flex-direction: column; overflow-y: auto; }
+            .sidebar { flex: 0 0 auto; max-height: 280px; border-right: none; border-bottom: 1px solid #333; }
+            .main-area { min-height: 560px; }
+            .diagram-container { overflow-x: auto; justify-content: flex-start; }
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
