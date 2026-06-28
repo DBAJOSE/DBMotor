@@ -33,6 +33,8 @@ La rama publicada es `main` y GitHub Pages debe apuntar a `main` / `root`.
 | `Simulador_Performance_Avanzado.html` | Simulador avanzado de hardware vs logica: indices, estadisticas, red/app y disco. |
 | `Simulador_SQL_Enterprise.html` | Simulador Enterprise de concurrencia: blocking, deadlock, TempDB spill y parameter sniffing. |
 | `juego_memory.html` | Laboratorio de Juegos: Juego de memoria (memofichas) con conceptos de bases de datos. |
+| `juego_quiz.html` | Quiz interactivo contrarreloj con 10 preguntas de diagnostico DBA. |
+| `juego_query_tuner.html` | Juego drag-and-drop para optimizar queries SQL arrastrando herramientas (indices, hints, estadisticas). |
 | `DBMOTOR.txt` | Nota/artifacto auxiliar existente. Revisar antes de borrar. |
 
 ## Funcionamiento De Laboratorios
@@ -152,6 +154,41 @@ Notas técnicas:
 - Lógica de barajado aleatorio (Fisher-Yates) al iniciar o reiniciar.
 - Bloqueo de interacción durante la comparación de cartas para evitar clics múltiples.
 - Totalmente responsive para jugar en móviles.
+
+### 7. SQL Quiz Master
+
+Archivo: `juego_quiz.html`
+
+Quiz de opción múltiple con 10 preguntas técnicas orientadas a diagnóstico DBA.
+
+Mecánica del juego:
+- Temporizador de 15 segundos por pregunta con barra de progreso visual.
+- Retroalimentación inmediata (respuestas correctas/incorrectas).
+- Sistema de puntuación final con clasificación (Senior/Intermedio/Junior).
+- Preguntas sobre waits, índices, deadlocks, niveles de aislamiento y optimización.
+
+Notas técnicas:
+- Auto-avance al agotar el tiempo (cuenta como respuesta incorrecta).
+- Deshabilitación de opciones tras selección para evitar cambios.
+- Modal de resultados con estadísticas finales.
+
+### 8. Query Tuner Challenge
+
+Archivo: `juego_query_tuner.html`
+
+Juego interactivo de drag-and-drop donde debes optimizar consultas SQL lentas arrastrando la herramienta correcta.
+
+Mecánica del juego:
+- 3 niveles progresivos (Índice, Estadísticas, Join Hint).
+- Queries SQL renderizadas con syntax highlighting.
+- Métricas en tiempo real (Tiempo de ejecución, Lecturas lógicas, CPU).
+- Drop zone dentro del código SQL para arrastrar herramientas.
+- Validación instantánea con feedback educativo.
+
+Notas técnicas:
+- HTML5 Drag and Drop API nativa.
+- Actualización dinámica de métricas al resolver correctamente.
+- Herramientas se marcan como "usadas" tras arrastrarlas.
 
 ## Convenciones Importantes
 

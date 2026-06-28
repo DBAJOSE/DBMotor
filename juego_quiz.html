@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Quiz Master</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --accent: #00d4ff;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text: #f8fafc;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 700px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-around;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            background: var(--card-bg);
+            padding: 15px 25px;
+            border-radius: 12px;
+            text-align: center;
+            flex: 1;
+            min-width: 120px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .stat-label { font-size: 0.75rem; color: rgba(248,250,252,0.6); text-transform: uppercase; }
+        .stat-value { font-size: 1.5rem; font-weight: bold; margin-top: 5px; }
+
+        .quiz-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .question-number {
+            font-size: 0.85rem;
+            color: var(--accent);
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .question {
+            font-size: 1.2rem;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .option {
+            background: rgba(255,255,255,0.03);
+            border: 2px solid rgba(255,255,255,0.1);
+            padding: 18px 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .option:hover {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: var(--accent);
+            transform: translateX(5px);
+        }
+
+        .option.selected {
+            border-color: var(--accent);
+            background: rgba(0, 212, 255, 0.15);
+        }
+
+        .option.correct {
+            border-color: var(--success);
+            background: rgba(16, 185, 129, 0.2);
+        }
+
+        .option.incorrect {
+            border-color: var(--danger);
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        .option-letter {
+            background: rgba(255,255,255,0.1);
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .btn-next {
+            margin-top: 25px;
+            width: 100%;
+            background: var(--accent);
+            color: #0f172a;
+            border: none;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+            display: none;
+        }
+
+        .btn-next:hover { transform: scale(1.02); filter: brightness(1.1); }
+        .btn-next.active { display: block; }
+
+        .result-screen {
+            text-align: center;
+            display: none;
+        }
+
+        .result-screen.active { display: block; }
+
+        .result-icon {
+            font-size: 5rem;
+            margin-bottom: 20px;
+        }
+
+        .result-title {
+            font-size: 2rem;
+            margin-bottom: 15px;
+        }
+
+        .result-stats {
+            font-size: 1.2rem;
+            margin: 20px 0;
+            line-height: 1.8;
+        }
+
+        .btn-restart {
+            background: var(--accent);
+            color: #0f172a;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        .timer-bar {
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .timer-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success), var(--warning), var(--danger));
+            transition: width 0.1s linear;
+            width: 100%;
+        }
+
+        @media (max-width: 640px) {
+            .quiz-card { padding: 25px; }
+            .question { font-size: 1rem; }
+            h1 { font-size: 1.3rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>SQL Quiz Master</h1>
+            <p style="color: rgba(248,250,252,0.6);">Diagnostica como un DBA experto</p>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat">
+                <div class="stat-label">Pregunta</div>
+                <div class="stat-value" id="questionCounter">1/10</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Correctas</div>
+                <div class="stat-value" style="color: var(--success);" id="correctCount">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Tiempo</div>
+                <div class="stat-value" style="color: var(--warning);" id="timer">15s</div>
+            </div>
+        </div>
+
+        <div class="quiz-card" id="quizCard">
+            <div class="timer-bar"><div class="timer-fill" id="timerFill"></div></div>
+            <div class="question-number" id="qNumber">Pregunta 1 de 10</div>
+            <div class="question" id="question"></div>
+            <div class="options" id="options"></div>
+            <button class="btn-next" id="btnNext" onclick="nextQuestion()">Siguiente Pregunta</button>
+        </div>
+
+        <div class="result-screen" id="resultScreen">
+            <i class="fas fa-trophy result-icon" style="color: #fbbf24;"></i>
+            <div class="result-title" id="resultTitle"></div>
+            <div class="result-stats" id="resultStats"></div>
+            <button class="btn-restart" onclick="restartQuiz()">Volver a Jugar</button>
+        </div>
+    </div>
+
+    <script>
+        const questions = [
+            {
+                q: "Un servidor SQL Server tiene alta CPU pero pocas transacciones. ¿Qué wait type investigarías primero?",
+                options: ["PAGEIOLATCH_SH", "SOS_SCHEDULER_YIELD", "WRITELOG", "LCK_M_X"],
+                correct: 1,
+                explanation: "SOS_SCHEDULER_YIELD indica CPU saturado por queries pesadas."
+            },
+            {
+                q: "Una consulta lenta muestra PAGEIOLATCH_SH como principal wait. ¿Cuál es la causa más probable?",
+                options: ["Bloqueos entre sesiones", "Disco lento leyendo datos", "CPU saturado", "Memoria insuficiente"],
+                correct: 1,
+                explanation: "PAGEIOLATCH_SH = espera de lectura de páginas desde disco."
+            },
+            {
+                q: "El log de transacciones crece descontroladamente. ¿Qué comando usas para diagnosticar?",
+                options: ["DBCC CHECKDB", "DBCC LOGINFO", "sp_who2", "sys.dm_exec_requests"],
+                correct: 1,
+                explanation: "DBCC LOGINFO muestra la fragmentación VLF del log."
+            },
+            {
+                q: "¿Qué índice es más eficiente para búsquedas de rangos ordenados?",
+                options: ["Hash Index", "Clustered B-Tree", "Bitmap Index", "Full-Text Index"],
+                correct: 1,
+                explanation: "B-Tree mantiene el orden y es óptimo para rangos."
+            },
+            {
+                q: "Un deadlock ocurre constantemente entre dos tablas. ¿Cuál es la mejor solución?",
+                options: ["Aumentar RAM", "Usar NOLOCK en todas las queries", "Acceder tablas en el mismo orden", "Fragmentar el disco"],
+                correct: 2,
+                explanation: "Acceder recursos en orden consistente previene deadlocks."
+            },
+            {
+                q: "Si TempDB está en un disco lento, ¿qué operación se verá afectada?",
+                options: ["Backups completos", "Lectura de datos históricos", "Ordenamientos (ORDER BY)", "Escritura de logs"],
+                correct: 2,
+                explanation: "TempDB almacena resultados intermedios de sorts/joins."
+            },
+            {
+                q: "¿Qué nivel de aislamiento evita lecturas sucias pero permite lecturas no repetibles?",
+                options: ["READ UNCOMMITTED", "READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"],
+                correct: 1,
+                explanation: "READ COMMITTED bloquea lecturas sucias, pero permite phantom reads."
+            },
+            {
+                q: "Una query plan muestra un Table Scan en lugar de Index Seek. ¿Qué revisas primero?",
+                options: ["Fragmentación de disco", "Estadísticas desactualizadas", "Tamaño del buffer pool", "Configuración de red"],
+                correct: 1,
+                explanation: "Estadísticas viejas impiden que el optimizador use índices."
+            },
+            {
+                q: "¿Cuál es el principal riesgo de habilitar AUTO_SHRINK en producción?",
+                options: ["Pérdida de datos", "Fragmentación severa", "Uso excesivo de RAM", "Bloqueos permanentes"],
+                correct: 1,
+                explanation: "AUTO_SHRINK causa fragmentación constante y degrada performance."
+            },
+            {
+                q: "Un wait WRITELOG alto indica problema en:",
+                options: ["Lectura de datos", "Escritura de log de transacciones", "Compilación de queries", "Acceso a TempDB"],
+                correct: 1,
+                explanation: "WRITELOG = tiempo esperando que el log se escriba a disco."
+            }
+        ];
+
+        let currentQuestion = 0;
+        let score = 0;
+        let timeLeft = 15;
+        let timerInterval = null;
+        let selectedAnswer = null;
+
+        function loadQuestion() {
+            const q = questions[currentQuestion];
+            document.getElementById('qNumber').textContent = `Pregunta ${currentQuestion + 1} de ${questions.length}`;
+            document.getElementById('questionCounter').textContent = `${currentQuestion + 1}/${questions.length}`;
+            document.getElementById('question').textContent = q.q;
+
+            const optionsDiv = document.getElementById('options');
+            optionsDiv.innerHTML = '';
+            
+            q.options.forEach((opt, idx) => {
+                const div = document.createElement('div');
+                div.className = 'option';
+                div.innerHTML = `<div class="option-letter">${String.fromCharCode(65 + idx)}</div><span>${opt}</span>`;
+                div.onclick = () => selectAnswer(idx, div);
+                optionsDiv.appendChild(div);
+            });
+
+            selectedAnswer = null;
+            document.getElementById('btnNext').classList.remove('active');
+            resetTimer();
+        }
+
+        function selectAnswer(idx, element) {
+            if (selectedAnswer !== null) return;
+
+            selectedAnswer = idx;
+            clearInterval(timerInterval);
+
+            const q = questions[currentQuestion];
+            const allOptions = document.querySelectorAll('.option');
+            
+            allOptions.forEach((opt, i) => {
+                opt.style.pointerEvents = 'none';
+                if (i === q.correct) {
+                    opt.classList.add('correct');
+                } else if (i === idx) {
+                    opt.classList.add('incorrect');
+                }
+            });
+
+            if (idx === q.correct) {
+                score++;
+                document.getElementById('correctCount').textContent = score;
+            }
+
+            document.getElementById('btnNext').classList.add('active');
+        }
+
+        function nextQuestion() {
+            currentQuestion++;
+            if (currentQuestion < questions.length) {
+                loadQuestion();
+            } else {
+                showResults();
+            }
+        }
+
+        function resetTimer() {
+            timeLeft = 15;
+            document.getElementById('timer').textContent = `${timeLeft}s`;
+            document.getElementById('timerFill').style.width = '100%';
+            
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer').textContent = `${timeLeft}s`;
+                document.getElementById('timerFill').style.width = `${(timeLeft / 15) * 100}%`;
+                
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    if (selectedAnswer === null) {
+                        selectAnswer(-1, null);
+                    }
+                }
+            }, 1000);
+        }
+
+        function showResults() {
+            clearInterval(timerInterval);
+            document.getElementById('quizCard').style.display = 'none';
+            document.getElementById('resultScreen').classList.add('active');
+
+            const percentage = (score / questions.length) * 100;
+            let title = '';
+            
+            if (percentage === 100) title = '¡Perfecto! DBA Senior';
+            else if (percentage >= 70) title = '¡Muy Bien! DBA Intermedio';
+            else if (percentage >= 50) title = 'Aprobado - Junior DBA';
+            else title = 'Sigue Practicando';
+
+            document.getElementById('resultTitle').textContent = title;
+            document.getElementById('resultStats').innerHTML = `
+                Respondiste <strong>${score}</strong> de <strong>${questions.length}</strong> preguntas correctamente<br>
+                Precisión: <strong>${percentage.toFixed(0)}%</strong>
+            `;
+        }
+
+        function restartQuiz() {
+            currentQuestion = 0;
+            score = 0;
+            document.getElementById('correctCount').textContent = '0';
+            document.getElementById('quizCard').style.display = 'block';
+            document.getElementById('resultScreen').classList.remove('active');
+            loadQuestion();
+        }
+
+        loadQuestion();
+    </script>
+</body>
+</html>
