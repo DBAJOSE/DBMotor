@@ -5,13 +5,13 @@
     <title>SQL Server Internals Simulator - AsistenteDBA</title>
     <style>
         :root { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --accent: #0078d4; --danger: #cf6679; --success: #03dac6; --warn: #bb86fc; }
-        body { font-family: 'Segoe UI', Consolas, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; height: 100vh; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Consolas, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: stretch; height: 100vh; box-sizing: border-box; overflow: hidden; }
         
         /* Dashboard Layout */
-        .dashboard { display: grid; grid-template-columns: 250px 1fr; gap: 20px; width: 100%; max-width: 1200px; height: 100%; }
+        .dashboard { display: grid; grid-template-columns: 250px 1fr; gap: 20px; width: 100%; flex: 1; min-height: 0; }
         
         /* Controls Panel */
-        .controls { background: var(--card); padding: 20px; border-radius: 8px; border-left: 4px solid var(--accent); display: flex; flex-direction: column; gap: 15px; }
+        .controls { background: var(--card); padding: 20px; border-radius: 8px; border-left: 4px solid var(--accent); display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
         h2 { margin-top: 0; font-size: 1.2rem; color: var(--accent); }
         label { font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; }
         input[type="range"] { width: 100%; margin-top: 5px; }
@@ -24,7 +24,7 @@
         .metric-lbl { font-size: 0.8rem; color: #888; }
 
         /* Simulation Area */
-        .simulation-area { background: var(--card); border-radius: 8px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+        .simulation-area { background: var(--card); border-radius: 8px; position: relative; overflow: hidden; display: flex; flex-direction: column; flex: 1; min-height: 0; }
         .pipeline { flex: 1; display: flex; align-items: center; justify-content: space-around; padding: 20px; position: relative; }
         
         /* Components */
