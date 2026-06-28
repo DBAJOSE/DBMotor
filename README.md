@@ -32,6 +32,7 @@ La rama publicada es `main` y GitHub Pages debe apuntar a `main` / `root`.
 | `02 Recuros - cuellos.html` | Simulador de cuellos de botella: CPU, log, datos, memoria y bloqueos. |
 | `Simulador_Performance_Avanzado.html` | Simulador avanzado de hardware vs logica: indices, estadisticas, red/app y disco. |
 | `Simulador_SQL_Enterprise.html` | Simulador Enterprise de concurrencia: blocking, deadlock, TempDB spill y parameter sniffing. |
+| `juego_memory.html` | Laboratorio de Juegos: Juego de memoria (memofichas) con conceptos de bases de datos. |
 | `DBMOTOR.txt` | Nota/artifacto auxiliar existente. Revisar antes de borrar. |
 
 ## Funcionamiento De Laboratorios
@@ -134,6 +135,23 @@ Notas tecnicas:
 
 - Maneja temporizadores por escenario para evitar que eventos viejos se disparen despues de un reset.
 - El monitor inferior muestra SPID, estado, wait type y comando.
+
+### 6. Laboratorio de Juegos (DBA Memory)
+
+Archivo: `juego_memory.html`
+
+Juego interactivo de memofichas diseñado para reforzar conceptos técnicos de bases de datos de forma lúdica.
+
+Mecánica del juego:
+- Tablero de 16 cartas (8 parejas).
+- Animación CSS 3D (flip cards).
+- Sistema de puntuación: cantidad de intentos y tiempo transcurrido.
+- Conceptos incluidos: ACID, Index, Deadlock, Sharding, Replica, Backup, Query, Transaction.
+
+Notas técnicas:
+- Lógica de barajado aleatorio (Fisher-Yates) al iniciar o reiniciar.
+- Bloqueo de interacción durante la comparación de cartas para evitar clics múltiples.
+- Totalmente responsive para jugar en móviles.
 
 ## Convenciones Importantes
 
