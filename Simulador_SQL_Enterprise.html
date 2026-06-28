@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>SQL Enterprise Simulator: Concurrency & Internals</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #121212; --panel: #1e1e24; --text: #e0e0e0;
+            --cpu: #ff9f43; --ram: #54a0ff; --disk: #ff6b6b; --tempdb: #feca57; --lock: #ff9ff3;
+            --session-a: #00d2d3; --session-b: #ff6b6b;
+        }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; height: 100vh; display: flex; overflow: hidden; }
+
+        /* CONTROL PANEL */
+        .sidebar { width: 320px; background: var(--panel); padding: 20px; display: flex; flex-direction: column; border-right: 1px solid #333; overflow-y: auto; }
+        .sidebar h2 { color: var(--session-a); font-size: 1.2rem; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .scenario-group { margin-bottom: 20px; }
+        .scenario-group h4 { color: #888; text-transform: uppercase; font-size: 0.8rem; margin-bottom: 10px; }
+        
+        button {
+            width: 100%; padding: 12px; margin-bottom: 8px; border: 1px solid #444; background: #2d2d3a; color: #fff; 
+            border-radius: 6px; cursor: pointer; text-align: left; display: flex; justify-content: space-between; align-items: center; transition: 0.2s;
+        }
+        button:hover { background: #3d3d4a; border-color: var(--session-a); }
+        button.active { background: #2d3436; border-left: 4px solid var(--session-a); }
+        button i { font-size: 1.2rem; }
+
+        /* STAGE */
+        .stage { flex: 1; padding: 20px; position: relative; display: flex; flex-direction: column; }
+        
+        /* ARCHITECTURE DIAGRAM */
+        .grid-system {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; 
+            background: #15151a; padding: 40px; border-radius: 15px; margin-bottom: 20px;
+            position: relative; height: 500px; align-content: center;
+        }
+
+        .node {
+            background: #2b2b36; border: 2px solid #444; border-radius: 12px; padding: 15px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: relative; z-index: 10; min-height: 100px; transition: 0.3s;
+        }
+        .node i { font-size: 2rem; margin-bottom: 10px; color: #777; }
+        .node-title { font-size: 0.9rem; font-weight: bold; }
+        .node-metric { font-size: 0.8rem; color: #aaa; margin-top: 5px; }
+
+        /* CONEXIONES VISUALES (SVG LINES) */
+        svg.connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+        line { stroke: #333; stroke-width: 2; }
+
+        /* PARTICULAS (QUERIES) */
+        .packet {
+            position: absolute; width: 18px; height: 18px; border-radius: 50%;
+            z-index: 20; box-shadow: 0 0 10px currentColor; transition: transform 0.1s linear;
+            display: flex; align-items: center; justify-content: center; font-size: 10px; color: black; font-weight: bold;
+        }
+        .pkt-sess-51 { background: var(--session-a); color: var(--session-a); }
+        .pkt-sess-52 { background: var(--session-b); color: var(--session-b); }
+
+        /* ALERTAS DE ESTADO */
+        .wait-badge {
+            position: absolute; top: -10px; right: -10px; background: #e74c3c; color: white;
+            padding: 4px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: bold; opacity: 0; transition: 0.3s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        /* LIVE MONITOR */
+        .monitor { background: #000; padding: 15px; border-radius: 8px; font-family: 'Consolas', monospace; color: #0f0; height: 150px; overflow-y: auto; font-size: 0.85rem; border: 1px solid #333; }
+        .mon-row { display: flex; justify-content: space-between; border-bottom: 1px solid #222; padding: 2px 0; }
+        .mon-head { color: #fff; font-weight: bold; border-bottom: 1px solid #555; }
+
+        /* STYLES FOR SPECIFIC STATES */
+        .node.locked { border-color: var(--lock); box-shadow: 0 0 15px var(--lock); }
+        .node.spill { border-color: var(--tempdb); box-shadow: 0 0 15px var(--tempdb); }
+        .node.cpu-burn { border-color: var(--cpu); animation: pulse 0.5s infinite; }
+
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>🚀 SQL Enterprise Lab</h2>
+    
+    <div class="scenario-group">
+        <h4>Concurrencia (Blocking)</h4>
+        <button onclick="runScenario('blocking')">
+            <span>🔒 Bloqueo (Blocking)</span> <i class="fas fa-key" style="color: var(--lock)"></i>
+        </button>
+        <button onclick="runScenario('deadlock')">
+            <span>💀 Deadlock (Victim)</span> <i class="fas fa-skull-crossbones" style="color: #e74c3c"></i>
+        </button>
+    </div>
+
+    <div class="scenario-group">
+        <h4>Recursos & TempDB</h4>
+        <button onclick="runScenario('spill')">
+            <span>⚠️ TempDB Spill (Sort)</span> <i class="fas fa-trash-alt" style="color: var(--tempdb)"></i>
+        </button>
+        <button onclick="runScenario('parameter_sniffing')">
+            <span>🐘 Parameter Sniffing</span> <i class="fas fa-weight-hanging" style="color: var(--cpu)"></i>
+        </button>
+    </div>
+
+    <div class="scenario-group">
+        <h4>Mantenimiento</h4>
+        <button onclick="killSession()" style="background: #c0392b; border-color: #e74c3c;">
+            <span>🔪 KILL Session 52</span> <i class="fas fa-ban"></i>
+        </button>
+        <button onclick="resetSim()">
+            <span>🔄 Reset</span> <i class="fas fa-undo"></i>
+        </button>
+    </div>
+</div>
+
+<div class="stage">
+    <div class="grid-system" id="grid">
+        <svg class="connections">
+            </svg>
+
+        <div class="node" id="n-client" style="grid-column: 2;">
+            <i class="fas fa-users"></i>
+            <span class="node-title">Clientes</span>
+            <span class="node-metric">Sessions: <span id="val-sess">0</span></span>
+        </div>
+
+        <div class="node" id="n-cpu" style="grid-column: 1;">
+            <div class="wait-badge" id="w-cpu">SOS_SCHEDULER</div>
+            <i class="fas fa-microchip" style="color: var(--cpu)"></i>
+            <span class="node-title">CPU & Plan Cache</span>
+        </div>
+
+        <div class="node" id="n-lock" style="grid-column: 2;">
+            <div class="wait-badge" id="w-lock">LCK_M_X</div>
+            <i class="fas fa-lock" style="color: var(--lock)"></i>
+            <span class="node-title">Lock Manager</span>
+        </div>
+
+        <div class="node" id="n-ram" style="grid-column: 3;">
+            <div class="wait-badge" id="w-ram">PAGEIOLATCH</div>
+            <i class="fas fa-memory" style="color: var(--ram)"></i>
+            <span class="node-title">Buffer Pool</span>
+        </div>
+
+        <div class="node" id="n-tempdb" style="grid-column: 1;">
+            <div class="wait-badge" id="w-temp">IO_COMPLETION</div>
+            <i class="fas fa-database" style="color: var(--tempdb)"></i>
+            <span class="node-title">TempDB</span>
+            <span class="node-metric">Spills/Sorts</span>
+        </div>
+
+        <div class="node" id="n-data" style="grid-column: 3;">
+            <div class="wait-badge" id="w-disk">PAGEIOLATCH_EX</div>
+            <i class="fas fa-hdd" style="color: var(--disk)"></i>
+            <span class="node-title">Data Files (.mdf)</span>
+        </div>
+    </div>
+
+    <div class="monitor" id="monitor">
+        <div class="mon-row mon-head">
+            <span style="width: 50px">SPID</span>
+            <span style="width: 100px">STATUS</span>
+            <span style="width: 150px">WAIT_TYPE</span>
+            <span>COMMAND</span>
+        </div>
+        </div>
+</div>
+
+<script>
+    // --- CONFIGURACIÓN ---
+    const nodes = {
+        client: document.getElementById('n-client'),
+        cpu: document.getElementById('n-cpu'),
+        lock: document.getElementById('n-lock'),
+        ram: document.getElementById('n-ram'),
+        tempdb: document.getElementById('n-tempdb'),
+        data: document.getElementById('n-data')
+    };
+
+    let activePackets = [];
+    let scenarioState = null;
+
+    // --- ESCENARIOS ---
+    function runScenario(type) {
+        resetSim();
+        scenarioState = type;
+
+        if (type === 'blocking') {
+            logMonitor("INFO", "Iniciando escenario de Bloqueo...");
+            // SPID 51 (El bloqueador) - UPDATE
+            spawnPacket('51', 'update', ['client', 'cpu', 'lock', 'ram', 'data', 'lock']); // Se queda en lock
+            
+            setTimeout(() => {
+                // SPID 52 (La víctima) - SELECT
+                spawnPacket('52', 'select', ['client', 'cpu', 'lock']); // Se detiene en lock
+            }, 2000);
+        }
+
+        if (type === 'spill') {
+            logMonitor("INFO", "Consulta pesada detectada (Sort Warning)...");
+            // SPID 55 - Consulta con poca memoria
+            spawnPacket('55', 'big_sort', ['client', 'cpu', 'ram', 'tempdb', 'ram', 'client']);
+        }
+
+        if (type === 'parameter_sniffing') {
+            logMonitor("INFO", "Plan Cache contaminado con parámetros atípicos...");
+            // SPID 60 - CPU Burn
+            spawnPacket('60', 'cpu_burn', ['client', 'cpu', 'cpu', 'cpu', 'data', 'client']);
+        }
+    }
+
+    // --- MOTOR DE SIMULACIÓN ---
+    function spawnPacket(spid, type, pathIds) {
+        const pkt = document.createElement('div');
+        pkt.className = `packet pkt-sess-${spid === '51' ? '51' : '52'}`;
+        pkt.innerText = spid;
+        pkt.dataset.spid = spid;
+        pkt.dataset.step = 0;
+        pkt.dataset.path = JSON.stringify(pathIds);
+        pkt.dataset.status = 'RUNNING';
+        
+        document.getElementById('grid').appendChild(pkt);
+        activePackets.push(pkt);
+
+        movePacket(pkt);
+        updateMonitor(spid, 'RUNNING', '', type.toUpperCase());
+    }
+
+    function movePacket(pkt) {
+        if (pkt.dataset.status === 'KILLED') { pkt.remove(); return; }
+
+        const path = JSON.parse(pkt.dataset.path);
+        const stepIndex = parseInt(pkt.dataset.step);
+        
+        if (stepIndex >= path.length) {
+            pkt.remove(); // Fin del viaje
+            updateMonitor(pkt.dataset.spid, 'COMPLETED', '', '--');
+            return;
+        }
+
+        const currentNodeId = path[stepIndex];
+        const nextNodeId = path[stepIndex]; // Nos movemos al target
+        const nodeEl = nodes[currentNodeId];
+
+        // Lógica de "Eventos en Nodos"
+        let delay = 1000;
+        
+        // --- LÓGICA DE BLOQUEO (Blocking) ---
+        if (scenarioState === 'blocking' && currentNodeId === 'lock') {
+            if (pkt.dataset.spid === '51') {
+                // El bloqueador: Se queda sosteniendo el bloqueo
+                nodeEl.classList.add('locked');
+                showBadge('w-lock', 'Holding Lock (X)');
+                updateMonitor('51', 'SLEEPING', 'None', 'AWAITING COMMAND');
+                delay = 999999; // Se queda ahí para siempre hasta reset
+            } else if (pkt.dataset.spid === '52') {
+                // La víctima: Choca con el bloqueo
+                updateMonitor('52', 'SUSPENDED', 'LCK_M_X', 'SELECT * FROM..');
+                // Efecto visual de rebote/espera
+                pkt.style.animation = "pulse 0.5s infinite";
+                delay = 999999; 
+            }
+        }
+
+        // --- LÓGICA DE TEMPDB SPILL ---
+        if (scenarioState === 'spill' && currentNodeId === 'tempdb') {
+            nodeEl.classList.add('spill');
+            showBadge('w-temp', 'SORT WARNING');
+            updateMonitor('55', 'SUSPENDED', 'IO_COMPLETION', 'SORTING...');
+            delay = 3000; // Lento
+        }
+
+        // --- LÓGICA DE CPU BURN (Sniffing) ---
+        if (scenarioState === 'parameter_sniffing' && currentNodeId === 'cpu') {
+            nodeEl.classList.add('cpu-burn');
+            showBadge('w-cpu', 'SOS_SCHEDULER');
+            updateMonitor('60', 'RUNNABLE', 'SOS_SCHEDULER_YIELD', 'COMPILING...');
+            delay = 1500; 
+        }
+
+        // Animación de movimiento
+        const rect = nodeEl.getBoundingClientRect();
+        const gridRect = document.getElementById('grid').getBoundingClientRect();
+        
+        // Centrar en el nodo
+        const x = rect.left - gridRect.left + rect.width/2 - 9;
+        const y = rect.top - gridRect.top + rect.height/2 - 9;
+
+        pkt.style.transform = `translate(${x}px, ${y}px)`;
+
+        // Preparar siguiente paso
+        setTimeout(() => {
+            if (pkt.dataset.status !== 'KILLED') {
+                // Limpiar estados visuales temporales
+                if(currentNodeId === 'tempdb') nodeEl.classList.remove('spill');
+                if(currentNodeId === 'cpu') nodeEl.classList.remove('cpu-burn');
+                hideBadges();
+
+                pkt.dataset.step = stepIndex + 1;
+                movePacket(pkt);
+            }
+        }, delay);
+    }
+
+    // --- UTILIDADES ---
+    function killSession() {
+        if (scenarioState !== 'blocking') return;
+        
+        // Matamos la sesión 52 (o 51 si quieres simular kill al blocker)
+        logMonitor("WARN", "KILL 52 ejecutado por DBA.");
+        const victim = activePackets.find(p => p.dataset.spid === '52');
+        if (victim) {
+            victim.dataset.status = 'KILLED';
+            victim.style.background = '#000';
+            setTimeout(() => victim.remove(), 500);
+            updateMonitor('52', 'KILLED/ROLLBACK', '', '');
+        }
+    }
+
+    function resetSim() {
+        activePackets.forEach(p => p.remove());
+        activePackets = [];
+        scenarioState = null;
+        document.querySelectorAll('.node').forEach(n => n.classList.remove('locked', 'spill', 'cpu-burn'));
+        hideBadges();
+        document.getElementById('monitor').innerHTML = `
+            <div class="mon-row mon-head">
+                <span style="width: 50px">SPID</span>
+                <span style="width: 100px">STATUS</span>
+                <span style="width: 150px">WAIT_TYPE</span>
+                <span>COMMAND</span>
+            </div>`;
+    }
+
+    function updateMonitor(spid, status, wait, cmd) {
+        // Buscar fila existente
+        let row = document.getElementById(`row-${spid}`);
+        if (!row) {
+            row = document.createElement('div');
+            row.className = 'mon-row';
+            row.id = `row-${spid}`;
+            document.getElementById('monitor').appendChild(row);
+        }
+        
+        // Color por estado
+        let color = '#0f0';
+        if (status === 'SUSPENDED') color = '#e74c3c'; // Rojo
+        if (status === 'SLEEPING') color = '#feca57'; // Amarillo
+
+        row.innerHTML = `
+            <span style="width: 50px; color: #fff">${spid}</span>
+            <span style="width: 100px; color: ${color}">${status}</span>
+            <span style="width: 150px">${wait || '-'}</span>
+            <span>${cmd}</span>
+        `;
+    }
+
+    function logMonitor(type, msg) {
+        const row = document.createElement('div');
+        row.style.color = '#aaa';
+        row.style.fontSize = '0.8em';
+        row.innerText = `[${type}] ${msg}`;
+        document.getElementById('monitor').appendChild(row);
+        document.getElementById('monitor').scrollTop = document.getElementById('monitor').scrollHeight;
+    }
+
+    function showBadge(id, text) {
+        const el = document.getElementById(id);
+        el.innerText = text;
+        el.style.opacity = 1;
+    }
+    
+    function hideBadges() {
+        document.querySelectorAll('.wait-badge').forEach(b => b.style.opacity = 0);
+    }
+
+</script>
+</body>
+</html>

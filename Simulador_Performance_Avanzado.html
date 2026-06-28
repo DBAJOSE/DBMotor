@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulador Avanzado SQL: Hardware vs Lógica - AsistenteDBA</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #1e1e24; --panel: #2b2b36; --text: #f1f2f6; 
+            --cpu: #ff9f43; --ram: #54a0ff; --disk: #ff6b6b; --net: #1dd1a1; --logic: #a55eea;
+            --scan: #eb3b5a; --seek: #20bf6b;
+        }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); margin: 0; height: 100vh; display: flex; overflow: hidden; }
+
+        /* SIDEBAR */
+        .sidebar { width: 300px; background: var(--panel); padding: 20px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #444; overflow-y: auto; }
+        h2 { color: var(--logic); font-size: 1.1rem; border-bottom: 2px solid var(--logic); padding-bottom: 10px; margin-bottom: 5px; }
+        .category-title { font-size: 0.85rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-top: 15px; }
+        
+        button {
+            padding: 12px; border: none; background: #3a3a45; color: white; text-align: left; cursor: pointer; border-radius: 6px; transition: 0.2s; display: flex; justify-content: space-between; align-items: center;
+        }
+        button:hover { background: #4a4a58; }
+        button.active { background: var(--logic); font-weight: bold; box-shadow: 0 4px 12px rgba(165, 94, 234, 0.4); }
+        button small { font-size: 0.75em; opacity: 0.7; }
+
+        /* MAIN STAGE */
+        .stage { flex: 1; padding: 40px; display: flex; flex-direction: column; position: relative; }
+        
+        /* DIAGRAMA FLOTANTE */
+        .architecture { 
+            display: flex; justify-content: space-between; align-items: center; 
+            background: #15151a; border-radius: 15px; padding: 40px; 
+            position: relative; box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+            height: 300px;
+        }
+
+        .node {
+            width: 120px; height: 120px; border: 3px solid #555; border-radius: 50%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: #2b2b36; z-index: 10; position: relative; transition: all 0.3s;
+        }
+        .node i { font-size: 2rem; margin-bottom: 5px; color: #777; }
+        .node span { font-size: 0.8rem; font-weight: bold; }
+        
+        /* ESTADOS DE LOS NODOS */
+        .node.active-cpu { border-color: var(--cpu); box-shadow: 0 0 20px var(--cpu); }
+        .node.active-ram { border-color: var(--ram); box-shadow: 0 0 20px var(--ram); }
+        .node.active-disk { border-color: var(--disk); box-shadow: 0 0 20px var(--disk); }
+        .node.active-net { border-color: var(--net); box-shadow: 0 0 20px var(--net); }
+        
+        /* ALERTAS FLOTANTES */
+        .alert-bubble {
+            position: absolute; top: -40px; background: #e74c3c; color: white; 
+            padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold;
+            opacity: 0; transition: 0.3s; white-space: nowrap;
+        }
+        .node.stressed .alert-bubble { opacity: 1; top: -50px; }
+        .node.stressed { animation: shake 0.5s infinite; border-color: #e74c3c !important; }
+
+        /* ANIMACIÓN DE PAQUETES */
+        .path { position: absolute; height: 4px; background: #333; top: 50%; left: 60px; right: 60px; z-index: 1; }
+        
+        .packet {
+            position: absolute; width: 15px; height: 15px; border-radius: 50%;
+            background: white; top: 50%; margin-top: -7.5px; z-index: 5;
+            box-shadow: 0 0 10px white;
+        }
+        /* Tipos de paquetes */
+        .pkt-seek { background: var(--seek); width: 10px; height: 10px; } /* Rápido */
+        .pkt-scan { background: var(--scan); width: 40px; height: 40px; border-radius: 5px; margin-top: -20px; } /* Lento y Pesado */
+        .pkt-frag { background: var(--disk); width: 20px; height: 20px; border-style: dotted; border-width: 2px; } /* Fragmentado */
+
+        /* INFO PANEL */
+        .info-panel {
+            margin-top: 20px; background: #2b2b36; padding: 20px; border-radius: 10px; border-left: 5px solid var(--logic);
+            animation: slideIn 0.5s;
+        }
+        .info-title { font-size: 1.2rem; color: var(--logic); margin-bottom: 10px; font-weight: bold; }
+        .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
+        .stat-box { background: #1e1e24; padding: 10px; border-radius: 5px; text-align: center; }
+        .stat-val { font-size: 1.2rem; font-weight: bold; }
+
+        @keyframes shake { 0% { transform: rotate(0deg); } 25% { transform: rotate(5deg); } 75% { transform: rotate(-5deg); } 100% { transform: rotate(0deg); } }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>🔧 Escenarios DBA</h2>
+
+    <div class="category-title">Hardware (Recursos)</div>
+    <button onclick="setScenario('normal', this)" class="active">
+        <span>✅ Flujo Óptimo</span> <small>Index Seek</small>
+    </button>
+    <button onclick="setScenario('io_bottleneck', this)">
+        <span>💾 Disco Lento</span> <small>PAGEIOLATCH</small>
+    </button>
+
+    <div class="category-title">Lógica & Diseño (El 80%)</div>
+    <button onclick="setScenario('fragmentation', this)">
+        <span>🧩 Fragmentación Índices</span> <small>Read-Ahead alto</small>
+    </button>
+    <button onclick="setScenario('missing_index', this)">
+        <span>🔍 Falta de Índice</span> <small>Table Scan (CPU+IO)</small>
+    </button>
+    <button onclick="setScenario('bad_stats', this)">
+        <span>📉 Estadísticas Viejas</span> <small>Plan Incorrecto</small>
+    </button>
+    <button onclick="setScenario('network_app', this)">
+        <span>🐢 App Lenta / Red</span> <small>ASYNC_NETWORK_IO</small>
+    </button>
+</div>
+
+<div class="stage">
+    <div class="architecture">
+        <div class="path"></div>
+
+        <div class="node" id="n-app">
+            <div class="alert-bubble" id="a-app"></div>
+            <i class="fas fa-laptop-code"></i> <span>Aplicación</span>
+        </div>
+
+        <div class="node" id="n-cpu">
+            <div class="alert-bubble" id="a-cpu"></div>
+            <i class="fas fa-microchip"></i> <span>SQL CPU</span>
+        </div>
+
+        <div class="node" id="n-ram">
+            <div class="alert-bubble" id="a-ram"></div>
+            <i class="fas fa-memory"></i> <span>Buffer Pool</span>
+        </div>
+
+        <div class="node" id="n-disk">
+            <div class="alert-bubble" id="a-disk"></div>
+            <i class="fas fa-hdd"></i> <span>Almacenamiento</span>
+        </div>
+    </div>
+
+    <div class="info-panel" id="info-panel">
+        <div class="info-title">Seleccione un escenario</div>
+        <div id="info-desc">Observe cómo fluyen los datos y dónde se generan los bloqueos.</div>
+        <div class="stat-grid">
+            <div class="stat-box"><div class="stat-val" id="val-wait">0ms</div><small>Wait Time</small></div>
+            <div class="stat-box"><div class="stat-val" id="val-cpu">Low</div><small>CPU Load</small></div>
+            <div class="stat-box"><div class="stat-val" id="val-io">Low</div><small>Disk I/O</small></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let intervalId;
+    let currentScenario = 'normal';
+    
+    // Configuración de los escenarios
+    const scenarios = {
+        'normal': {
+            title: "Flujo Optimizado (Index Seek)",
+            desc: "El escenario ideal. La consulta usa un índice (Seek), trae pocas páginas de datos. La CPU trabaja poco y el disco responde rápido.",
+            packetType: 'pkt-seek',
+            speed: 2000, // ms duration
+            stress: null,
+            stats: { wait: '2ms', cpu: '5%', io: 'Low' },
+            waitType: ''
+        },
+        'io_bottleneck': {
+            title: "Hardware: Disco Lento",
+            desc: "La consulta es eficiente, pero el disco físico no responde. Común en almacenamientos compartidos saturados o HDDs mecánicos.",
+            packetType: 'pkt-seek',
+            speed: 5000,
+            stress: 'n-disk',
+            stats: { wait: '150ms', cpu: '5%', io: 'Saturated' },
+            waitType: 'PAGEIOLATCH_EX'
+        },
+        'fragmentation': {
+            title: "Lógica: Fragmentación de Índices",
+            desc: "Las páginas de datos están desordenadas (lógica) y dispersas (física). SQL Server tiene que hacer mucho más I/O aleatorio para leer la misma cantidad de datos. Aumenta el 'Read-Ahead'.",
+            packetType: 'pkt-frag',
+            speed: 4000,
+            stress: 'n-disk',
+            stats: { wait: '45ms', cpu: '15%', io: 'High (Random)' },
+            waitType: 'IO_COMPLETION'
+        },
+        'missing_index': {
+            title: "Lógica: Falta de Índice (Table Scan)",
+            desc: "El asesino #1. Al no haber índice, SQL tiene que leer TODA la tabla (Scan) para encontrar un dato. Esto dispara el uso de CPU (procesar filas) y revienta el disco (leer gigabytes).",
+            packetType: 'pkt-scan',
+            speed: 6000,
+            stress: 'n-cpu', // Stress en ambos, pero CPU inicia el problema
+            stats: { wait: 'High', cpu: '100%', io: 'Max' },
+            waitType: 'SOS_SCHEDULER / CXPACKET'
+        },
+        'bad_stats': {
+            title: "Lógica: Estadísticas Desactualizadas",
+            desc: "El optimizador cree que la tabla tiene 1 fila, pero tiene 1 millón. Elige un plan de ejecución equivocado (ej. Nested Loop). La CPU se satura intentando unir datos ineficientemente.",
+            packetType: 'pkt-scan',
+            speed: 5500,
+            stress: 'n-cpu',
+            stats: { wait: 'High', cpu: '90%', io: 'High' },
+            waitType: 'SOS_SCHEDULER'
+        },
+        'network_app': {
+            title: "Externa: App Lenta (RBAR)",
+            desc: "La base de datos entrega los datos rápido, pero la aplicación los procesa uno por uno (Row By Row) o la red está saturada. SQL Server se queda esperando a que la App diga 'recibido'.",
+            packetType: 'pkt-seek',
+            speed: 4000,
+            stress: 'n-app', // Stress en la App/Red
+            stats: { wait: '200ms', cpu: 'Low', io: 'Low' },
+            waitType: 'ASYNC_NETWORK_IO'
+        }
+    };
+
+    function setScenario(id, btn) {
+        // Reset UI
+        document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.node').forEach(n => {
+            n.className = 'node'; // Remove stress classes
+            n.querySelector('.alert-bubble').style.opacity = 0;
+        });
+        
+        // Load Scenario
+        currentScenario = id;
+        const s = scenarios[id];
+        
+        // Update Info Panel
+        document.querySelector('.info-title').innerText = s.title;
+        document.getElementById('info-desc').innerText = s.desc;
+        document.getElementById('val-wait').innerText = s.stats.wait;
+        document.getElementById('val-cpu').innerText = s.stats.cpu;
+        document.getElementById('val-io').innerText = s.stats.io;
+        
+        // Apply Visual Stress
+        if(s.stress) {
+            const node = document.getElementById(s.stress);
+            node.classList.add('stressed');
+            const alert = document.getElementById(s.stress.replace('n-', 'a-'));
+            alert.innerText = s.waitType;
+            alert.style.opacity = 1;
+        }
+
+        // Restart Animation Loop
+        clearInterval(intervalId);
+        spawnPacket();
+        intervalId = setInterval(spawnPacket, 1500); // Frequency
+    }
+
+    function spawnPacket() {
+        const s = scenarios[currentScenario];
+        const pkt = document.createElement('div');
+        pkt.className = `packet ${s.packetType}`;
+        
+        // Append to architecture container
+        const container = document.querySelector('.architecture');
+        container.appendChild(pkt);
+        
+        // Get positions
+        const startNode = document.getElementById('n-app').getBoundingClientRect();
+        const endNode = document.getElementById('n-disk').getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+
+        // Start Position (App)
+        const startX = startNode.left - containerRect.left + 60;
+        
+        // End Position (Disk)
+        const endX = endNode.left - containerRect.left + 60;
+
+        pkt.style.left = startX + 'px';
+
+        // Animate: App -> CPU -> RAM -> Disk -> App (Return)
+        // Simplificado: Viaje de ida visual
+        const anim = pkt.animate([
+            { transform: 'translateX(0px)', opacity: 1 },
+            { transform: `translateX(${endX - startX}px)`, opacity: 0 }
+        ], {
+            duration: s.speed,
+            easing: 'ease-in-out'
+        });
+
+        anim.onfinish = () => pkt.remove();
+    }
+
+    // Init
+    setScenario('normal', document.querySelector('button.active'));
+
+</script>
+</body>
+</html>

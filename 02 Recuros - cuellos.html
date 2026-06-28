@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulador de Cuellos de Botella SQL Server - AsistenteDBA</title>
+    <style>
+        :root {
+            --bg-main: #121212; --bg-panel: #1e1e24; --text-primary: #e0e0e0;
+            --accent: #00d4ff; --cpu: #ff9f43; --ram: #54a0ff; --disk: #ff6b6b; --network: #1dd1a1;
+            --danger: #e74c3c; --warning: #f1c40f;
+        }
+        body {
+            font-family: 'Segoe UI', Consolas, Tahoma, sans-serif;
+            background-color: var(--bg-main); color: var(--text-primary);
+            margin: 0; padding: 20px; display: flex; gap: 20px; height: 100vh; box-sizing: border-box;
+        }
+
+        /* CONTROLES LATERALES */
+        .sidebar {
+            flex: 0 0 280px; background: var(--bg-panel); padding: 20px; border-radius: 12px;
+            display: flex; flex-direction: column; gap: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        h2 { margin-top: 0; color: var(--accent); font-size: 1.3rem; }
+        h3 { font-size: 1rem; margin-bottom: 5px; color: #888; }
+        .btn-scenario {
+            padding: 12px; border: none; border-radius: 6px;
+            background: #333; color: var(--text-primary); cursor: pointer;
+            text-align: left; font-weight: bold; transition: all 0.2s;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .btn-scenario:hover { filter: brightness(1.2); }
+        .btn-scenario.active { border-left: 4px solid var(--accent); background: #2a2a2a; }
+        .accent-cpu { color: var(--cpu); } .accent-ram { color: var(--ram); } .accent-disk { color: var(--disk); }
+
+        /* ÁREA PRINCIPAL DE SIMULACIÓN */
+        .main-area {
+            flex: 1; display: flex; flex-direction: column; gap: 20px;
+        }
+        .diagram-container {
+            flex: 2; background: var(--bg-panel); border-radius: 12px; padding: 30px;
+            position: relative; display: flex; align-items: center; justify-content: space-between;
+            overflow: hidden;
+        }
+
+        /* NODOS DEL FLUJO */
+        .node {
+            width: 120px; height: 100px; background: #2d2d3a; border: 3px solid #444;
+            border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center; position: relative; z-index: 2; transition: all 0.3s;
+        }
+        .node small { display: block; font-size: 0.7rem; color: #aaa; margin-top: 5px; }
+        .node i { font-size: 1.5rem; margin-bottom: 5px; }
+
+        .node.bottleneck {
+            border-color: var(--danger); box-shadow: 0 0 20px rgba(231, 76, 60, 0.4); animation: pulse 1s infinite alternate;
+        }
+
+        /* CONECTORES Y FLUJO */
+        .connector { flex: 1; height: 4px; background: #444; position: relative; margin: 0 10px; }
+        .packet {
+            position: absolute; width: 14px; height: 14px; background: var(--accent);
+            border-radius: 50%; top: 50%; margin-top: -7px; z-index: 5;
+            box-shadow: 0 0 10px var(--accent);
+        }
+
+        /* ALERTAS DE ERROR */
+        .wait-alert {
+            position: absolute; top: -50px; left: 50%; transform: translateX(-50%);
+            background: var(--danger); color: white; padding: 8px 15px; border-radius: 20px;
+            font-weight: bold; font-family: Consolas, monospace; font-size: 0.9rem;
+            white-space: nowrap; opacity: 0; transition: opacity 0.3s, top 0.3s; z-index: 10;
+        }
+        .node.bottleneck .wait-alert { opacity: 1; top: -65px; }
+
+        /* PANEL DE EXPLICACIÓN */
+        .explanation-panel {
+            flex: 1; background: #2a2a35; border-radius: 12px; padding: 20px; border-left: 5px solid #444;
+        }
+        #explanation-title { margin-top: 0; color: var(--accent); }
+        #explanation-text { line-height: 1.5; }
+
+        @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.03); } }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+<nav class="sidebar">
+    <h2>⚡ Inyectar Fallos</h2>
+    <p style="font-size: 0.8rem; color: #888;">Haz clic para simular un problema y ver el tipo de espera resultante.</p>
+    
+    <h3>🟢 Estado Normal</h3>
+    <button class="btn-scenario active" onclick="setScenario('normal', this)">
+        Flujo Óptimo <i class="fas fa-check-circle" style="color: var(--network)"></i>
+    </button>
+
+    <h3>🧠 Problemas de CPU</h3>
+    <button class="btn-scenario" onclick="setScenario('cpu_high', this)">
+        CPU al 100% <span class="accent-cpu">SOS_SCHEDULER</span>
+    </button>
+
+    <h3>💾 Problemas de Disco (I/O)</h3>
+    <button class="btn-scenario" onclick="setScenario('disk_log', this)">
+        Latencia en Log (.ldf) <span class="accent-disk">WRITELOG</span>
+    </button>
+    <button class="btn-scenario" onclick="setScenario('disk_data', this)">
+        Latencia en Datos (.mdf) <span class="accent-disk">PAGEIOLATCH</span>
+    </button>
+
+    <h3>💭 Problemas de Memoria</h3>
+    <button class="btn-scenario" onclick="setScenario('memory_low', this)">
+        Buffer Pool Lleno <span class="accent-ram">PAGEIOLATCH_SH</span>
+    </button>
+
+    <h3>🔒 Bloqueos</h3>
+    <button class="btn-scenario" onclick="setScenario('blocking', this)">
+        Bloqueo Transaccional <span style="color: var(--warning)">LCK_M_X</span>
+    </button>
+</nav>
+
+<main class="main-area">
+    <div class="diagram-container" id="diagram">
+        
+        <div class="node" id="node-client">
+            <i class="fas fa-laptop-code accent-cpu"></i>
+            Cliente/App<small>Envía Query</small>
+        </div>
+
+        <div class="connector"><div class="packet"></div></div>
+
+        <div class="node" id="node-cpu">
+            <i class="fas fa-microchip accent-cpu"></i>
+            <div class="wait-alert" id="alert-cpu"></div>
+            CPU / Optimizador<small>Compila y Ejecuta</small>
+        </div>
+
+        <div class="connector"><div class="packet"></div></div>
+
+        <div class="node" id="node-ram">
+            <i class="fas fa-memory accent-ram"></i>
+            <div class="wait-alert" id="alert-ram"></div>
+            Buffer Pool (RAM)<small>Caché de Datos</small>
+        </div>
+
+        <div class="connector"><div class="packet"></div></div>
+
+        <div class="node" id="node-disk">
+            <i class="fas fa-hdd accent-disk"></i>
+            <div class="wait-alert" id="alert-disk"></div>
+            Subsistema I/O<small>Discos MDF/LDF</small>
+        </div>
+
+    </div>
+
+    <div class="explanation-panel" id="explanation-box">
+        <h3 id="explanation-title">Flujo Normal de Procesamiento</h3>
+        <p id="explanation-text">El sistema funciona correctamente. Las consultas llegan, se procesan en CPU, los datos se encuentran mayormente en RAM (Buffer Hit) y las escrituras a disco son rápidas. No hay tiempos de espera significativos.</p>
+    </div>
+</main>
+
+<script>
+    let currentScenario = 'normal';
+    const packets = document.querySelectorAll('.packet');
+    const nodes = {
+        cpu: document.getElementById('node-cpu'),
+        ram: document.getElementById('node-ram'),
+        disk: document.getElementById('node-disk')
+    };
+    const alerts = {
+        cpu: document.getElementById('alert-cpu'),
+        ram: document.getElementById('alert-ram'),
+        disk: document.getElementById('alert-disk')
+    };
+    const explanation = {
+        title: document.getElementById('explanation-title'),
+        text: document.getElementById('explanation-text'),
+        box: document.getElementById('explanation-box')
+    };
+
+    // Datos de los escenarios
+    const scenarios = {
+        'normal': {
+            title: "✅ Flujo Normal de Procesamiento",
+            text: "El motor opera sin contención. Las consultas fluyen rápidamente a través de todas las etapas. Las métricas de espera (wait stats) estarían cerca de cero.",
+            color: "#444",
+            speeds: [1, 1, 1] // Velocidad normal en cada tramo
+        },
+        'cpu_high': {
+            title: "🔥 Cuello de Botella: CPU Saturada",
+            text: "La CPU está al 100%. Hay más hilos (threads) intentando ejecutarse de los que el procesador puede atender. Los hilos deben 'ceder' su turno voluntariamente.",
+            wait: "SOS_SCHEDULER_YIELD",
+            target: "cpu",
+            color: "var(--cpu)",
+            speeds: [0.1, 1, 1] // Lento al inicio
+        },
+        'disk_log': {
+            title: "📝 Cuello de Botella: Escritura en Log (.ldf)",
+            text: "Típico en cargas masivas (ej. HammerDB). El disco no alcanza a escribir las confirmaciones de transacción (Commits) secuencialmente. Toda la base de datos se ralentiza esperando que el log se vacíe al disco.",
+            wait: "WRITELOG",
+            target: "disk",
+            color: "var(--disk)",
+            speeds: [1, 1, 0.05] // Muy lento al final
+        },
+        'disk_data': {
+            title: "🐌 Cuello de Botella: Lectura/Escritura Datos (.mdf)",
+            text: "SQL necesita leer una página de datos del disco (porque no estaba en RAM) o escribir una página sucia, y el disco tarda mucho en responder. Común en discos mecánicos o sistemas de almacenamiento saturados.",
+            wait: "PAGEIOLATCH_EX (o SH)",
+            target: "disk",
+            color: "var(--disk)",
+            speeds: [1, 0.5, 0.1]
+        },
+        'memory_low': {
+            title: "🧠 Cuello de Botella: Presión de Memoria (RAM)",
+            text: "El Buffer Pool es muy pequeño para los datos que se consultan. SQL Server tiene que estar constantemente sacando y metiendo páginas del disco a la RAM ('Buffer Thrashing'), generando latencia en el acceso a memoria.",
+            wait: "PAGEIOLATCH_SH / RESOURCE_SEMAPHORE",
+            target: "ram",
+            color: "var(--ram)",
+            speeds: [1, 0.1, 0.5]
+        },
+        'blocking': {
+            title: "🔒 Cuello de Botella: Bloqueo (Blocking)",
+            text: "No es un problema de hardware. Una transacción (Sesión A) tiene bloqueada una tabla o fila, y otra transacción (Sesión B) intenta acceder al mismo recurso. La Sesión B queda 'suspendida' esperando que la A termine.",
+            wait: "LCK_M_X (Wait for Lock)",
+            target: "cpu", // Se manifiesta antes de entrar a I/O
+            color: "var(--warning)",
+            speeds: [0.01, 0.01, 0.01] // Todo se detiene
+        }
+    };
+
+    function setScenario(scenarioId, btn) {
+        currentScenario = scenarioId;
+        
+        // Actualizar UI de botones
+        document.querySelectorAll('.btn-scenario').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // Resetear nodos
+        Object.values(nodes).forEach(n => n.classList.remove('bottleneck'));
+        Object.values(alerts).forEach(a => a.innerText = '');
+
+        // Aplicar nuevo escenario
+        const data = scenarios[scenarioId];
+        explanation.title.innerText = data.title;
+        explanation.text.innerText = data.text;
+        explanation.box.style.borderLeftColor = data.color;
+
+        if (data.wait) {
+            nodes[data.target].classList.add('bottleneck');
+            alerts[data.target].innerText = data.wait;
+        }
+    }
+
+    // Animación del flujo
+    let positions = [0, 0, 0];
+    function animate() {
+        const speeds = scenarios[currentScenario].speeds;
+
+        packets.forEach((pkt, i) => {
+            positions[i] += speeds[i] * 1.5; // Velocidad base
+            if (positions[i] > 100) positions[i] = 0;
+            
+            // Lógica simple para simular "atasco" visual
+            if (speeds[i] < 0.2 && positions[i] > 80) {
+                 positions[i] = 80 + Math.random()*5; // Se queda vibrando al final del conector
+            }
+
+            pkt.style.left = positions[i] + '%';
+        });
+
+        requestAnimationFrame(animate);
+    }
+
+    animate(); // Iniciar bucle de animación
+
+</script>
+
+</body>
+</html>

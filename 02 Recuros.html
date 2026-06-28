@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>SQL Server Storage Lab - Drag & Drop</title>
+    <style>
+        :root { --bg: #1e1e24; --panel: #2b2b36; --accent: #00d4ff; --hdd: #ff6b6b; --ssd: #feca57; --nvme: #1dd1a1; --text: #f1f2f6; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* HEADER */
+        header { padding: 15px 20px; background: #111; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #333; }
+        h1 { margin: 0; font-size: 1.2rem; color: var(--accent); }
+        .stats-bar { display: flex; gap: 20px; }
+        .stat { background: #333; padding: 5px 15px; border-radius: 4px; font-weight: bold; font-family: monospace; }
+        .val-good { color: var(--nvme); } .val-bad { color: var(--hdd); }
+
+        /* MAIN LAYOUT */
+        .workspace { display: flex; height: 100%; }
+        
+        /* SIDEBAR (INVENTORY) */
+        .sidebar { width: 220px; background: var(--panel); padding: 15px; border-right: 1px solid #444; display: flex; flex-direction: column; gap: 20px; }
+        .sidebar h3 { margin: 0 0 10px 0; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; color: #888; }
+        
+        /* DRAGGABLE ITEMS */
+        .draggable { cursor: grab; padding: 10px; margin-bottom: 8px; border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: transform 0.2s; user-select: none; }
+        .draggable:active { cursor: grabbing; transform: scale(0.95); }
+        
+        .disk-item { border: 2px solid #555; background: #222; display: flex; align-items: center; justify-content: space-between; }
+        .disk-hdd { border-color: var(--hdd); }
+        .disk-ssd { border-color: var(--ssd); }
+        .disk-nvme { border-color: var(--nvme); }
+        
+        .file-item { background: #0078d4; color: white; font-weight: bold; text-align: center; border: 1px dashed rgba(255,255,255,0.5); }
+        .file-ldf { background: #e056fd; } /* Log file color */
+        .file-mdf { background: #0078d4; } /* Data file color */
+
+        /* SERVER RACK AREA */
+        .rack-area { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 20px; position: relative; }
+        
+        /* STORAGE BAYS */
+        .storage-bays { display: flex; gap: 20px; justify-content: center; height: 200px; }
+        .bay { width: 200px; height: 100%; border: 2px dashed #444; border-radius: 10px; background: rgba(0,0,0,0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; transition: all 0.3s; }
+        .bay.drag-over { background: rgba(255,255,255,0.1); border-color: var(--accent); }
+        
+        /* Installed Disk Styles */
+        .installed-disk { width: 90%; height: 90%; background: #2a2a2a; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 10px; position: relative; }
+        .disk-label { font-size: 0.8rem; font-weight: bold; text-align: right; }
+        .disk-activity { width: 10px; height: 10px; border-radius: 50%; background: #333; position: absolute; top: 10px; left: 10px; }
+        .disk-activity.active { background: #0f0; box-shadow: 0 0 10px #0f0; }
+
+        .file-slot { height: 40px; border: 1px dotted #555; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #555; font-size: 0.8rem; transition: background 0.3s; }
+        .file-slot.has-file { border: none; }
+
+        /* VISUALIZATION PIPELINE */
+        .pipeline { flex: 1; background: #111; border-radius: 10px; position: relative; overflow: hidden; display: flex; justify-content: space-around; align-items: center; }
+        .pipe-node { width: 100px; height: 80px; background: #222; border: 2px solid #444; border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 0.8rem; z-index: 2; }
+        
+        .particle { position: absolute; width: 12px; height: 12px; border-radius: 50%; z-index: 5; pointer-events: none; transition: transform linear; }
+        .p-log { background: #e056fd; box-shadow: 0 0 8px #e056fd; }
+        .p-data { background: #0078d4; box-shadow: 0 0 8px #0078d4; }
+
+        /* Instructions Overlay */
+        .overlay { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; border: 1px solid #444; max-width: 300px; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>🧪 Laboratorio de I/O SQL Server</h1>
+    <div class="stats-bar">
+        <div class="stat">WRITELOG: <span id="stat-log" class="val-bad">0 ms</span></div>
+        <div class="stat">PAGEIOLATCH: <span id="stat-data" class="val-good">0 ms</span></div>
+        <div class="stat">TPM: <span id="stat-tpm">0</span></div>
+    </div>
+    <button onclick="toggleSim()" style="padding: 5px 15px; background: var(--accent); border:none; cursor:pointer; font-weight:bold;">⏯ Pausa/Play</button>
+</header>
+
+<div class="workspace">
+    <div class="sidebar">
+        <h3>🛒 Almacén de Discos</h3>
+        <div class="draggable disk-item disk-hdd" draggable="true" data-type="disk" data-spec="hdd">
+            <span>💾 HDD (SATA)</span> <small>20ms</small>
+        </div>
+        <div class="draggable disk-item disk-ssd" draggable="true" data-type="disk" data-spec="ssd">
+            <span>⚡ SSD (SAS)</span> <small>5ms</small>
+        </div>
+        <div class="draggable disk-item disk-nvme" draggable="true" data-type="disk" data-spec="nvme">
+            <span>🚀 NVMe (PCIe)</span> <small>1ms</small>
+        </div>
+
+        <h3>📂 Archivos DB</h3>
+        <div id="source-mdf" class="draggable file-item file-mdf" draggable="true" data-type="file" data-file="mdf">
+            DATA (.mdf)
+        </div>
+        <div id="source-ldf" class="draggable file-item file-ldf" draggable="true" data-type="file" data-file="ldf">
+            LOG (.ldf)
+        </div>
+    </div>
+
+    <div class="rack-area">
+        <h3 style="text-align: center; color: #666;">SERVER RACK (Arrastra discos aquí)</h3>
+        <div class="storage-bays">
+            <div class="bay" ondrop="dropDisk(event)" ondragover="allowDrop(event)" id="bay-1">
+                <span style="color:#555">Ranura Vacía 1</span>
+            </div>
+            <div class="bay" ondrop="dropDisk(event)" ondragover="allowDrop(event)" id="bay-2">
+                <span style="color:#555">Ranura Vacía 2</span>
+            </div>
+            <div class="bay" ondrop="dropDisk(event)" ondragover="allowDrop(event)" id="bay-3">
+                <span style="color:#555">Ranura Vacía 3</span>
+            </div>
+        </div>
+
+        <div class="pipeline" id="pipeline">
+            <div class="pipe-node" id="node-app">HammerDB<br>(GIGAPC)</div>
+            <div class="pipe-node" id="node-buffer">Buffer Pool<br>(RAM)</div>
+            <div style="width: 2px; height: 50px; background: #333;"></div>
+            </div>
+
+        <div class="overlay">
+            <strong>Instrucciones:</strong>
+            <ol style="padding-left: 15px; margin: 5px 0;">
+                <li>Arrastra un disco (HDD/SSD) a una ranura vacía.</li>
+                <li>Arrastra los archivos .MDF o .LDF **dentro** de los discos instalados.</li>
+                <li>Observa cómo cambia la latencia y la velocidad de las partículas.</li>
+            </ol>
+            <small style="color: yellow;">Tip: ¡Intenta separar Log y Data en discos diferentes!</small>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- ESTADO DEL SISTEMA ---
+    const system = {
+        running: true,
+        disks: { 1: null, 2: null, 3: null }, // Bay ID -> { type: 'hdd', latency: 20, files: [] }
+        files: { mdf: null, ldf: null }, // 'mdf' -> Bay ID
+        metrics: { tpm: 0, logWait: 0, dataWait: 0 }
+    };
+
+    const specs = {
+        hdd: { latency: 2000, name: 'HDD', color: 'var(--hdd)' }, // Latency in visualization speed units
+        ssd: { latency: 500, name: 'SSD', color: 'var(--ssd)' },
+        nvme: { latency: 100, name: 'NVMe', color: 'var(--nvme)' }
+    };
+
+    // --- DRAG & DROP LOGIC ---
+    let draggedItem = null;
+
+    document.addEventListener('dragstart', e => {
+        draggedItem = e.target;
+        e.dataTransfer.setData('type', e.target.dataset.type);
+        e.dataTransfer.setData('spec', e.target.dataset.spec); // hdd, ssd, etc
+        e.dataTransfer.setData('file', e.target.dataset.file); // mdf, ldf
+    });
+
+    function allowDrop(e) { e.preventDefault(); }
+
+    function dropDisk(e) {
+        e.preventDefault();
+        const type = e.dataTransfer.getData('type');
+        if (type !== 'disk') return;
+
+        // Encontrar el Bay padre
+        let bay = e.target.closest('.bay');
+        if (!bay || bay.children.length > 1) return; // Ya tiene disco
+
+        const specKey = e.dataTransfer.getData('spec');
+        const spec = specs[specKey];
+        const bayId = bay.id.split('-')[1];
+
+        // Instalar Disco Visualmente
+        bay.innerHTML = `
+            <div class="installed-disk" style="border: 2px solid ${spec.color}" data-bay="${bayId}">
+                <div class="disk-activity" id="led-${bayId}"></div>
+                <div class="disk-label" style="color:${spec.color}">${spec.name}</div>
+                <div class="file-slot" ondrop="dropFile(event)" ondragover="allowDrop(event)" id="slot-${bayId}-1">Arrastra Archivo Aquí</div>
+                <div class="file-slot" ondrop="dropFile(event)" ondragover="allowDrop(event)" id="slot-${bayId}-2">Arrastra Archivo Aquí</div>
+            </div>
+        `;
+
+        // Actualizar Sistema
+        system.disks[bayId] = { type: specKey, latency: spec.latency, realMs: specKey==='hdd'?20:(specKey==='ssd'?5:1) };
+    }
+
+    function dropFile(e) {
+        e.preventDefault();
+        e.stopPropagation(); // No bubbler al disco
+        const type = e.dataTransfer.getData('type');
+        if (type !== 'file') return;
+
+        const fileType = e.dataTransfer.getData('file'); // mdf, ldf
+        const slot = e.target.closest('.file-slot');
+        const bayId = e.target.closest('.installed-disk').dataset.bay;
+
+        if (!slot) return;
+
+        // Limpiar ubicación anterior si existía
+        if (system.files[fileType]) {
+            const oldBay = system.files[fileType];
+            // Buscar y limpiar el slot visual anterior (simplificado: recargamos visualmente si hiciera falta, pero aquí solo movemos)
+            document.querySelectorAll(`.file-slot`).forEach(s => {
+                if(s.innerText.includes(fileType.toUpperCase())) {
+                    s.innerHTML = "Espacio Libre";
+                    s.classList.remove('has-file');
+                    s.style.background = "transparent";
+                    s.style.color = "#555";
+                }
+            });
+        }
+
+        // Asignar al nuevo slot
+        system.files[fileType] = bayId;
+        slot.innerHTML = `📄 .${fileType.toUpperCase()}`;
+        slot.classList.add('has-file');
+        slot.style.background = fileType === 'ldf' ? '#e056fd' : '#0078d4';
+        slot.style.color = 'white';
+
+        // Eliminar del inventario si venía de allí (ocultar)
+        document.getElementById(`source-${fileType}`).style.display = 'none';
+    }
+
+    // --- SIMULACIÓN LOOP ---
+    
+    function toggleSim() { system.running = !system.running; }
+
+    setInterval(() => {
+        if (!system.running) return;
+        // Solo generar tráfico si los archivos están asignados
+        if (system.files.ldf) spawnTransaction('log');
+        if (system.files.mdf && Math.random() > 0.7) spawnTransaction('data'); // Menos frecuente
+        
+        updateStats();
+    }, 500);
+
+    function spawnTransaction(type) {
+        const bayId = system.files[type === 'log' ? 'ldf' : 'mdf'];
+        if (!bayId) return;
+
+        const diskData = system.disks[bayId];
+        if (!diskData) return; // Disco removido?
+
+        // Crear partícula
+        const p = document.createElement('div');
+        p.classList.add('particle', type === 'log' ? 'p-log' : 'p-data');
+        document.getElementById('pipeline').appendChild(p);
+
+        // Posición inicial (Buffer Pool)
+        const buffer = document.getElementById('node-buffer');
+        const bufferRect = buffer.getBoundingClientRect();
+        const pipeRect = document.getElementById('pipeline').getBoundingClientRect();
+        
+        // Posición Destino (El disco físico en el rack)
+        const targetDisk = document.getElementById(`bay-${bayId}`);
+        const targetRect = targetDisk.getBoundingClientRect();
+
+        // Coordenadas relativas al pipeline
+        const startX = bufferRect.left - pipeRect.left + 50;
+        const startY = bufferRect.top - pipeRect.top + 40;
+        
+        // Hack visual: proyectar el destino dentro del pipeline visualmente aunque vaya al rack
+        // En realidad, vamos a simular que viaja hacia "abajo" al rack
+        const endX = targetRect.left - pipeRect.left + 100;
+        const endY = targetRect.top - pipeRect.top + 50;
+
+        p.style.transform = `translate(${startX}px, ${startY}px)`;
+
+        // Animación
+        const duration = diskData.latency + (Math.random() * 200); // Variación
+        
+        // Flash LED del disco
+        const led = document.getElementById(`led-${bayId}`);
+        if(led) {
+            led.classList.add('active');
+            setTimeout(() => led.classList.remove('active'), 200);
+        }
+
+        const anim = p.animate([
+            { transform: `translate(${startX}px, ${startY}px)`, opacity: 1 },
+            { transform: `translate(${endX}px, ${endY}px)`, opacity: 0 }
+        ], {
+            duration: duration,
+            easing: 'ease-in'
+        });
+
+        anim.onfinish = () => {
+            p.remove();
+            if (type === 'log') {
+                system.metrics.tpm += 10;
+                system.metrics.logWait = diskData.realMs;
+            } else {
+                system.metrics.dataWait = diskData.realMs;
+            }
+        };
+    }
+
+    function updateStats() {
+        // Decaimiento de métricas
+        if (Math.random() > 0.5) system.metrics.tpm = Math.max(0, system.metrics.tpm - 5);
+        
+        document.getElementById('stat-tpm').innerText = system.metrics.tpm;
+        
+        // Colores dinámicos
+        const lLog = document.getElementById('stat-log');
+        lLog.innerText = system.files.ldf ? system.metrics.logWait + ' ms' : 'N/A';
+        lLog.className = system.metrics.logWait > 10 ? 'val-bad' : 'val-good';
+
+        const lData = document.getElementById('stat-data');
+        lData.innerText = system.files.mdf ? system.metrics.dataWait + ' ms' : 'N/A';
+        lData.className = system.metrics.dataWait > 15 ? 'val-bad' : 'val-good';
+    }
+
+</script>
+</body>
+</html>

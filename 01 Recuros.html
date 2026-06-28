@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>SQL Server Internals Simulator - AsistenteDBA</title>
+    <style>
+        :root { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --accent: #0078d4; --danger: #cf6679; --success: #03dac6; --warn: #bb86fc; }
+        body { font-family: 'Segoe UI', Consolas, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; height: 100vh; box-sizing: border-box; }
+        
+        /* Dashboard Layout */
+        .dashboard { display: grid; grid-template-columns: 250px 1fr; gap: 20px; width: 100%; max-width: 1200px; height: 100%; }
+        
+        /* Controls Panel */
+        .controls { background: var(--card); padding: 20px; border-radius: 8px; border-left: 4px solid var(--accent); display: flex; flex-direction: column; gap: 15px; }
+        h2 { margin-top: 0; font-size: 1.2rem; color: var(--accent); }
+        label { font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; }
+        input[type="range"] { width: 100%; margin-top: 5px; }
+        button { background: var(--accent); color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:hover { filter: brightness(1.2); }
+        button.stop { background: var(--danger); }
+        
+        .metric-box { background: #2d2d2d; padding: 10px; border-radius: 4px; text-align: center; margin-top: 10px; }
+        .metric-val { font-size: 1.5rem; font-weight: bold; font-family: monospace; }
+        .metric-lbl { font-size: 0.8rem; color: #888; }
+
+        /* Simulation Area */
+        .simulation-area { background: var(--card); border-radius: 8px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+        .pipeline { flex: 1; display: flex; align-items: center; justify-content: space-around; padding: 20px; position: relative; }
+        
+        /* Components */
+        .component { 
+            width: 140px; height: 100px; 
+            background: #333; border: 2px solid #555; 
+            border-radius: 10px; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; 
+            z-index: 10; position: relative;
+            transition: transform 0.1s;
+        }
+        .component strong { font-size: 1rem; }
+        .component small { font-size: 0.7rem; color: #aaa; }
+        .queue-count { position: absolute; top: -10px; right: -10px; background: var(--danger); color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; opacity: 0; transition: opacity 0.3s; }
+        
+        /* Connecting Lines */
+        .connector { position: absolute; height: 4px; background: #444; top: 50%; z-index: 1; }
+        
+        /* Particles (Transactions) */
+        .particle {
+            position: absolute; width: 12px; height: 12px;
+            background: var(--success); border-radius: 50%;
+            top: 50%; margin-top: -6px; z-index: 5;
+            box-shadow: 0 0 5px var(--success);
+        }
+        
+        /* Log Console */
+        .console { height: 150px; background: #111; padding: 10px; overflow-y: auto; font-family: Consolas, monospace; font-size: 0.85rem; border-top: 1px solid #444; }
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 2px; }
+        .err { color: var(--danger); } .warn { color: var(--warn); } .info { color: #888; } .succ { color: var(--success); }
+
+        /* States */
+        .component.stressed { border-color: var(--danger); box-shadow: 0 0 15px rgba(207, 102, 121, 0.3); animation: shake 0.5s infinite; }
+        .component.writing { border-color: var(--success); }
+
+        @keyframes shake { 0% { transform: translate(1px, 1px); } 50% { transform: translate(-1px, -1px); } 100% { transform: translate(1px, 1px); } }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <div class="controls">
+        <h2>🛠️ Configuración HammerDB</h2>
+        
+        <div>
+            <label>Usuarios Virtuales (Carga)</label>
+            <input type="range" id="slider-load" min="1" max="50" value="5">
+            <small id="val-load">5 hilos</small>
+        </div>
+
+        <hr style="border-color: #444; width: 100%;">
+        <h2>💾 Subsistema de Disco</h2>
+
+        <div>
+            <label>Latencia Log (.ldf) (ms)</label>
+            <input type="range" id="slider-latency" min="1" max="100" value="20">
+            <small id="val-latency">20 ms</small>
+        </div>
+
+        <label style="cursor: pointer;">
+            <input type="checkbox" id="check-vlf"> ⚠️ Fragmentación VLF (+Overhead)
+        </label>
+        
+        <label style="cursor: pointer;">
+            <input type="checkbox" id="check-durability"> 🚀 Delayed Durability
+        </label>
+
+        <hr style="border-color: #444; width: 100%;">
+        
+        <div class="metric-box">
+            <div class="metric-val" id="metric-tpm">0</div>
+            <div class="metric-lbl">TPM (Estimado)</div>
+        </div>
+        
+        <div class="metric-box">
+            <div class="metric-val" id="metric-wait" style="color: var(--success)">0 ms</div>
+            <div class="metric-lbl">WRITELOG Avg</div>
+        </div>
+
+        <button onclick="toggleSimulation()" id="btn-start">▶ INICIAR PRUEBA</button>
+    </div>
+
+    <div class="simulation-area">
+        <div class="pipeline">
+            <div class="connector" style="left: 10%; width: 25%;"></div>
+            <div class="connector" style="left: 40%; width: 25%;"></div>
+            <div class="connector" style="left: 70%; width: 20%;"></div>
+
+            <div class="component" id="node-app">
+                <strong>HammerDB</strong>
+                <small>Virtual Users</small>
+            </div>
+
+            <div class="component" id="node-buffer">
+                <strong>Buffer Pool</strong>
+                <small>RAM (Dirty Pages)</small>
+                <div class="queue-count" id="q-buffer">0</div>
+            </div>
+
+            <div class="component" id="node-log">
+                <strong>Log Writer</strong>
+                <small>Transaction Log (.ldf)</small>
+                <div class="queue-count" id="q-log">0</div>
+            </div>
+
+            <div class="component" id="node-disk">
+                <strong>Data File</strong>
+                <small>Checkpoint (.mdf)</small>
+            </div>
+        </div>
+        
+        <div class="console" id="console-output">
+            <div class="log-entry info">> Sistema listo. Configure parámetros y pulse INICIAR.</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Configuración del Estado
+    let isRunning = false;
+    let transactionsCompleted = 0;
+    let totalWaitTime = 0;
+    let waitSamples = 0;
+    let logQueue = 0;
+    let bufferContention = 0;
+    
+    // Referencias DOM
+    const els = {
+        app: document.getElementById('node-app'),
+        buffer: document.getElementById('node-buffer'),
+        log: document.getElementById('node-log'),
+        disk: document.getElementById('node-disk'),
+        console: document.getElementById('console-output'),
+        tpm: document.getElementById('metric-tpm'),
+        wait: document.getElementById('metric-wait'),
+        qLog: document.getElementById('q-log'),
+        btn: document.getElementById('btn-start')
+    };
+
+    // Listeners Inputs
+    document.getElementById('slider-load').oninput = (e) => document.getElementById('val-load').innerText = e.target.value + " hilos";
+    document.getElementById('slider-latency').oninput = (e) => document.getElementById('val-latency').innerText = e.target.value + " ms";
+
+    function log(msg, type = 'info') {
+        const div = document.createElement('div');
+        div.className = `log-entry ${type}`;
+        div.innerText = `> ${msg}`;
+        els.console.prepend(div);
+        if (els.console.children.length > 20) els.console.lastChild.remove();
+    }
+
+    function toggleSimulation() {
+        isRunning = !isRunning;
+        els.btn.innerText = isRunning ? "⏹ DETENER" : "▶ INICIAR PRUEBA";
+        els.btn.className = isRunning ? "stop" : "";
+        
+        if (isRunning) {
+            log("Iniciando carga TPC-C simulada...", "info");
+            loop();
+            updateMetrics();
+        } else {
+            log("Prueba detenida.", "warn");
+        }
+    }
+
+    // Bucle Principal (Game Loop)
+    function loop() {
+        if (!isRunning) return;
+
+        const load = parseInt(document.getElementById('slider-load').value);
+        // Probabilidad de generar nueva transacción basada en la carga
+        if (Math.random() < (load * 0.05)) {
+            spawnTransaction();
+        }
+
+        // Procesar cola del Log
+        processLogQueue();
+
+        requestAnimationFrame(loop);
+    }
+
+    // Generar Partícula Visual
+    function spawnTransaction() {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        document.querySelector('.pipeline').appendChild(p);
+
+        // Animación: App -> Buffer
+        animateParticle(p, els.app, els.buffer, 500, () => {
+            // Fase 2: Buffer -> Log (Aquí es donde ocurre el cuello de botella)
+            if (checkBufferHealth()) {
+                logQueue++;
+                updateQueueUI();
+                
+                // Si Delayed Durability está ON, pasa rápido
+                const isDelayed = document.getElementById('check-durability').checked;
+                
+                if (isDelayed) {
+                     // Pasa casi instantáneo al disco (checkpoints asíncronos)
+                    animateParticle(p, els.buffer, els.disk, 200, () => {
+                        finishTransaction(p);
+                        logQueue--; // Se libera rápido
+                        updateQueueUI();
+                    });
+                } else {
+                    // Si es Normal, tiene que esperar al Log Writer
+                    // La partícula se "absorbe" en el nodo Log y espera
+                    animateParticle(p, els.buffer, els.log, 400, () => {
+                        p.remove(); // Se queda en cola lógica, no visual
+                    });
+                }
+            } else {
+                p.remove(); // Fallo por buffer lleno
+            }
+        });
+    }
+
+    // Mueve un div de A a B
+    function animateParticle(el, from, to, duration, callback) {
+        const fRect = from.getBoundingClientRect();
+        const tRect = to.getBoundingClientRect();
+        const parentRect = document.querySelector('.pipeline').getBoundingClientRect();
+
+        const startX = fRect.left - parentRect.left + fRect.width/2;
+        const startY = fRect.top - parentRect.top + fRect.height/2;
+        const endX = tRect.left - parentRect.left + tRect.width/2;
+        const endY = tRect.top - parentRect.top + tRect.height/2;
+
+        const anim = el.animate([
+            { transform: `translate(${startX}px, ${startY}px)` },
+            { transform: `translate(${endX}px, ${endY}px)` }
+        ], { duration: duration, easing: 'linear' });
+
+        anim.onfinish = callback;
+    }
+
+    // Simula el Log Writer (El hilo background)
+    let isWritingLog = false;
+    function processLogQueue() {
+        if (logQueue > 0 && !isWritingLog) {
+            isWritingLog = true;
+            
+            // Calcular latencia real
+            let baseLatency = parseInt(document.getElementById('slider-latency').value);
+            const hasVLF = document.getElementById('check-vlf').checked;
+            
+            // Si hay fragmentación VLF, añadimos penalización aleatoria y fuerte
+            let currentLatency = hasVLF ? baseLatency + (Math.random() * 50) : baseLatency;
+
+            els.log.classList.add('writing');
+
+            // Simular tiempo de escritura en disco
+            setTimeout(() => {
+                // Procesamos un "batch" de transacciones de la cola
+                const batchSize = 1; // El log writer escribe bloques
+                logQueue = Math.max(0, logQueue - batchSize);
+                
+                transactionsCompleted += batchSize;
+                
+                // Registrar métricas
+                totalWaitTime += currentLatency;
+                waitSamples++;
+
+                els.log.classList.remove('writing');
+                isWritingLog = false;
+                updateQueueUI();
+
+                // Visualizar Checkpoint ocasional
+                if (transactionsCompleted % 10 === 0) {
+                    flashComponent(els.disk);
+                }
+
+            }, currentLatency * 5); // Multiplicador para efecto visual (sino es muy rápido)
+        }
+    }
+
+    function checkBufferHealth() {
+        // Simular PAGEIOLATCH si la carga es muy alta
+        const load = parseInt(document.getElementById('slider-load').value);
+        if (load > 40 && Math.random() > 0.98) {
+            log("PAGEIOLATCH_EX: Buffer Pool saturado buscando páginas.", "err");
+            els.buffer.classList.add('stressed');
+            setTimeout(() => els.buffer.classList.remove('stressed'), 500);
+            return false; // Transacción fallida/lenta
+        }
+        return true;
+    }
+
+    function finishTransaction(p) {
+        p.remove();
+        transactionsCompleted++;
+    }
+
+    function updateQueueUI() {
+        els.qLog.innerText = logQueue;
+        els.qLog.style.opacity = logQueue > 0 ? 1 : 0;
+        
+        // Si la cola crece mucho -> WRITELOG Crítico
+        if (logQueue > 10) {
+            els.log.classList.add('stressed');
+            if (Math.random() > 0.9) log(`WRITELOG Alto: ${logQueue} tareas esperando flush.`, "warn");
+        } else {
+            els.log.classList.remove('stressed');
+        }
+    }
+
+    function flashComponent(el) {
+        el.style.borderColor = '#03dac6';
+        setTimeout(() => el.style.borderColor = '#555', 200);
+    }
+
+    function updateMetrics() {
+        if (!isRunning) return;
+        
+        // Calcular TPM (falso pero realista visualmente)
+        // Escalamos transactionsCompleted a un valor tipo "TPM"
+        let tpm = Math.floor(transactionsCompleted * (60 / (performance.now()/1000))) * 100;
+        // Evitar Infinity al inicio
+        if (tpm < 0 || isNaN(tpm)) tpm = 0;
+
+        els.tpm.innerText = tpm.toLocaleString();
+
+        // Calcular Wait Promedio
+        let avgWait = waitSamples > 0 ? (totalWaitTime / waitSamples).toFixed(1) : 0;
+        els.wait.innerText = avgWait + " ms";
+        
+        // Colorear métricas
+        els.wait.style.color = avgWait > 20 ? "var(--danger)" : (avgWait > 10 ? "var(--warn)" : "var(--success)");
+
+        setTimeout(updateMetrics, 1000);
+    }
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratorios | DB Motor</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .labs-container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            height: calc(100vh - 70px);
+            margin-top: 70px;
+        }
+
+        .sidebar {
+            background: var(--card-bg);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .lab-menu {
+            list-style: none;
+        }
+
+        .lab-item {
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.95rem;
+            color: var(--gray);
+            border: 1px solid transparent;
+        }
+
+        .lab-item:hover {
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--light);
+        }
+
+        .lab-item.active {
+            background: var(--primary);
+            color: var(--dark);
+            font-weight: 600;
+        }
+
+        .lab-item i {
+            font-size: 1.1rem;
+        }
+
+        .content-area {
+            background: #0b1120;
+            padding: 0;
+            position: relative;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #fff;
+        }
+
+        .welcome-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .welcome-screen i {
+            font-size: 4rem;
+            color: var(--primary);
+            margin-bottom: 1.5rem;
+            opacity: 0.5;
+        }
+
+        @media (max-width: 768px) {
+            .labs-container {
+                grid-template-columns: 1fr;
+            }
+            .sidebar {
+                height: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="navbar">
+            <div class="logo">DB<span>Motor</span></div>
+            <ul class="nav-links">
+                <li><a href="index.html">Inicio</a></li>
+                <li><a href="laboratorios.html" class="active">Laboratorios</a></li>
+                <li><a href="index.html#publicaciones">Publicaciones</a></li>
+                <li><a href="index.html#contacto" class="btn-primary">Contacto</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="labs-container">
+        <aside class="sidebar">
+            <h2>Laboratorios SQL</h2>
+            <ul class="lab-menu">
+                <li class="lab-item" onclick="loadLab('01 Recuros.html', this)">
+                    <i class="fas fa-microchip"></i>
+                    Recursos del Sistema
+                </li>
+                <li class="lab-item" onclick="loadLab('02 Recuros.html', this)">
+                    <i class="fas fa-server"></i>
+                    Análisis de Recursos II
+                </li>
+                <li class="lab-item" onclick="loadLab('02 Recuros - cuellos.html', this)">
+                    <i class="fas fa-chart-line"></i>
+                    Cuellos de Botella
+                </li>
+                <li class="lab-item" onclick="loadLab('Simulador_Performance_Avanzado.html', this)">
+                    <i class="fas fa-bolt"></i>
+                    Performance Avanzado
+                </li>
+                <li class="lab-item" onclick="loadLab('Simulador_SQL_Enterprise.html', this)">
+                    <i class="fas fa-building"></i>
+                    SQL Enterprise Sim
+                </li>
+            </ul>
+        </aside>
+
+        <section class="content-area" id="lab-viewer">
+            <div class="welcome-screen">
+                <i class="fas fa-flask"></i>
+                <h1>Panel de Laboratorios</h1>
+                <p>Selecciona un laboratorio de la izquierda para comenzar la simulación.</p>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        function loadLab(file, element) {
+            // Activar ítem en sidebar
+            document.querySelectorAll('.lab-item').forEach(item => item.classList.remove('active'));
+            element.classList.add('active');
+
+            // Cargar iframe
+            const viewer = document.getElementById('lab-viewer');
+            viewer.innerHTML = `<iframe src="${file}" title="Lab Viewer"></iframe>`;
+        }
+    </script>
+</body>
+</html>
